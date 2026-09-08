@@ -122,6 +122,13 @@ html.fi:has(body.fi-panel-app) {
        above the prefix icon instead of centred on it. */
     .fi-input {
         @apply h-full py-0 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400;
+
+        /* Global search renders `type="search"`, so WebKit paints its own blue
+           cancel glyph next to the key cap. Escape already clears the field. */
+        &::-webkit-search-cancel-button,
+        &::-webkit-search-decoration {
+            @apply appearance-none;
+        }
     }
 
     /* Keyboard hint reads as a key cap rather than trailing text */
@@ -283,8 +290,15 @@ html.fi:has(body.fi-panel-app) {
 
     .fi-sidebar-item-btn,
     .fi-sidebar-group-btn,
-    .fi-sidebar-search,
     .fi-tenant-menu-trigger-text {
+        @apply overflow-hidden;
+    }
+
+    /* The search field clips only while the rail is collapsed, so its label
+       slides out behind the narrowing edge like every other one. An open
+       sidebar must not clip it: the results panel is absolutely positioned and
+       wider than the column, so a clip here hides every result on desktop. */
+    .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-search {
         @apply overflow-hidden;
     }
 
