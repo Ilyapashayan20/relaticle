@@ -27,18 +27,42 @@
    Pure Tailwind CSS Classes Only
    =================================== */
 
-/* App Panel Custom Layout */
+/* App Panel Custom Layout
+
+   Profile (and any tall page) was scrolling the document. Overflow past
+   <body> paints on <html>. html.fi is only min-h-dvh; Filament also sets
+   .fi-main-ctn to min-h-[calc(100dvh-4rem)]. The app shell used h-screen
+   (100vh), which can be taller than 100dvh. Lock html/body and keep the
+   only scroller on .fi-layout. */
+html.fi:has(body.fi-panel-app) {
+    height: 100dvh;
+    overflow: hidden;
+}
+
+.fi-body.fi-panel-app {
+    height: 100dvh;
+    overflow: hidden;
+}
+
 .fi-app-layout {
-    @apply flex h-screen;
+    @apply flex h-full overflow-hidden;
 }
 
 .fi-app-main-wrapper {
-    @apply flex-1 flex flex-col min-w-0;
+    @apply flex min-h-0 min-w-0 flex-1 flex-col;
 
-    /* Only the content area scrolls, not the topbar */
     > .fi-layout {
-        @apply flex-1 overflow-y-auto;
+        @apply min-h-0 flex-1 overflow-y-auto;
+        height: auto;
     }
+}
+
+.fi-body.fi-panel-app .fi-app-layout .fi-main-ctn {
+    min-height: 0;
+}
+
+.fi-app-layout .fi-main {
+    height: auto;
 }
 
 .fi-header-heading {
