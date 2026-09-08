@@ -427,8 +427,19 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply border-r border-gray-100 dark:border-gray-800;
 }
 
+/* Rounded corners only. overflow-hidden made this box Floating UI's flip
+   clipping ancestor. Row action menus teleport out so they stay visible, then
+   flip to the top of a short relation-manager table and cover + New / Attach. */
 .fi-ta-content {
-    @apply rounded-xl overflow-hidden;
+    @apply rounded-xl;
+}
+
+/* asmit/resized-column sets overflow-x: auto on the same node Filament marks
+   as the fixed positioning context. CSS then computes overflow-y to auto as
+   well, which is the same clipping ancestor as above. Keep horizontal scroll
+   on .fi-ta-table-wrapper only. */
+.fi-ta-content-ctn.fi-fixed-positioning-context {
+    overflow: visible;
 }
 
 .fi-ta-table thead {
@@ -493,22 +504,42 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 }
 
 /* Dropdowns */
-.fi-dropdown-panel {
-    @apply rounded-xl;
-}
 
 /* asmit/resized-column lifts the table toolbar (`.fi-ta-header-ctn`) to
    z-index 21 so its own dropdowns clear the sticky table head at 19. That also
    puts it above a page-header action dropdown, whose panel is Filament's
    default z-index 20, so the panel renders *behind* the search field and
-   filter/column triggers. Lift those panels over the toolbar; 22 keeps them
-   under Filament chrome (topbar/sidebar, z-index 30). */
-.fi-header-actions-ctn .fi-dropdown-panel {
-    @apply z-[22];
+   filter/column triggers. Row ⋮ menus teleport to body at the same default,
+   so they paint under + New / Attach and the column-reorder grip sits on
+   Detach. 22 clears the toolbar and stays under Filament chrome (30). */
+.fi-dropdown-panel {
+    @apply z-[22] rounded-xl p-1;
+}
+
+.fi-dropdown-list {
+    @apply flex flex-col gap-0.5 p-0;
+}
+
+.fi-dropdown-list + .fi-dropdown-list {
+    @apply mt-1 border-t border-gray-100 pt-1 dark:border-white/10;
 }
 
 .fi-dropdown-list-item {
-    @apply rounded-lg;
+    @apply flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm;
+}
+
+.fi-dropdown-list-item .fi-icon {
+    @apply size-5 shrink-0;
+}
+
+.fi-dropdown-list-item-label {
+    @apply min-w-0 flex-1 text-start;
+}
+
+/* Livewire shows this on click. Idle, it must not occupy layout or it reads
+   as a grip on Detach. */
+.fi-dropdown-panel .fi-loading-indicator {
+    display: none;
 }
 
 /* Panels */
@@ -537,7 +568,7 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
 
 /* Actions */
 .fi-ac-action:hover,
-.fi-ta-actions button:hover {
+.fi-ta-actions button:hover:not(.fi-dropdown-list-item) {
     @apply transition-opacity duration-200 opacity-80;
 }
 
