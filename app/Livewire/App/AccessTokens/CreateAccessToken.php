@@ -145,11 +145,11 @@ final class CreateAccessToken extends BaseLivewireComponent
                     const flash = () => {
                         copied = true
 
-                        $nextTick(() => $el.__x_tippy?.show())
+                        $nextTick(() => $el._tippy?.show())
 
                         setTimeout(() => {
                             copied = false
-                            $nextTick(() => $el.__x_tippy?.hide())
+                            $nextTick(() => $el._tippy?.hide())
                         }, 2000)
                     }
 
