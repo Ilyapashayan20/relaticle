@@ -127,7 +127,8 @@ final class CreateAccessToken extends BaseLivewireComponent
             ->icon($this->copyTokenIcon())
             ->label(__('access-tokens.modals.show_token.copy_to_clipboard_tooltip'))
             ->extraAttributes([
-                'x-data' => '{ copied: false }',
+                'title' => false,
+                'x-data' => '{ copied: false, resetCopied: null }',
                 'x-tooltip' => <<<JS
                     {
                         content: copied ? {$copiedLabel} : {$copyLabel},
@@ -146,7 +147,9 @@ final class CreateAccessToken extends BaseLivewireComponent
 
                         $nextTick(() => $el._tippy?.show())
 
-                        setTimeout(() => {
+                        clearTimeout(resetCopied)
+
+                        resetCopied = setTimeout(() => {
                             copied = false
                             $nextTick(() => $el._tippy?.hide())
                         }, 2000)
