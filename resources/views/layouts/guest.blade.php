@@ -23,6 +23,7 @@
         :robots="$robots" />
 
     <!-- Scripts -->
+    <x-clipboard-fallback />
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 
     @stack('header')

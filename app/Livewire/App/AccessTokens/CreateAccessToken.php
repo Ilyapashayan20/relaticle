@@ -139,10 +139,9 @@ final class CreateAccessToken extends BaseLivewireComponent
                 'x-bind:class' => "copied ? 'fi-color-success' : null",
             ])
             ->alpineClickHandler(<<<'JS'
-                (() => {
-                    const input = $el.closest('.fi-input-wrp').querySelector('input')
-
-                    const flash = () => {
+                navigator.clipboard
+                    .writeText($el.closest('.fi-input-wrp').querySelector('input').value)
+                    .then(() => {
                         copied = true
 
                         $nextTick(() => $el._tippy?.show())
@@ -151,20 +150,7 @@ final class CreateAccessToken extends BaseLivewireComponent
                             copied = false
                             $nextTick(() => $el._tippy?.hide())
                         }, 2000)
-                    }
-
-                    if (navigator.clipboard) {
-                        navigator.clipboard.writeText(input.value).then(flash)
-
-                        return
-                    }
-
-                    input.select()
-                    document.execCommand('copy')
-                    input.setSelectionRange(0, 0)
-                    input.blur()
-                    flash()
-                })()
+                    })
                 JS);
     }
 

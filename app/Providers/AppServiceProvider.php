@@ -49,6 +49,8 @@ use Filament\Facades\Filament;
 use Filament\Livewire\Notifications;
 use Filament\Support\Facades\FilamentColor;
 use Filament\Support\Facades\FilamentTimezone;
+use Filament\Support\Facades\FilamentView;
+use Filament\View\PanelsRenderHook;
 use Illuminate\Auth\Events\Login;
 use Illuminate\Auth\Events\Verified;
 use Illuminate\Cache\RateLimiting\Limit;
@@ -170,6 +172,11 @@ final class AppServiceProvider extends ServiceProvider
         // scheduled-deletion interstitials, which would otherwise render
         // Filament's default amber instead of the brand color.
         FilamentColor::register(['primary' => BrandColors::primary()]);
+
+        FilamentView::registerRenderHook(
+            PanelsRenderHook::HEAD_START,
+            fn (): string => view('components.clipboard-fallback')->render(),
+        );
 
         Event::listen(Login::class, RecordLoginTimestampListener::class);
         Event::listen(Verified::class, NewSubscriberListener::class);

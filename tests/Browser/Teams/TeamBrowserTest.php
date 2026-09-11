@@ -35,3 +35,20 @@ it('can create a new team through the browser', function (): void {
 
     expect(Team::where('name', 'Second Workspace')->where('user_id', $user->id)->exists())->toBeTrue();
 });
+
+it('copies the team invite link when the browser has no clipboard api', function (): void {
+    $user = User::factory()->withTeam()->create();
+    $team = $user->ownedTeams()->first();
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$team->slug}")
+        ->navigate("/app/{$team->slug}/team/members");
+
+    removeClipboardApi($page);
+
+    $page->press('Invite link')
+        ->click('.fi-modal-window [aria-label="Copy"]')
+        ->waitForText('Link copied.');
+
+    expect($page->script('window.copiedText'))->toEndWith("/join/{$team->invite_link_token}");
+});

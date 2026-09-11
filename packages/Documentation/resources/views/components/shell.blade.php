@@ -18,6 +18,8 @@
         :og-description="$ogDescription ?? $description"
         :og-type="$ogType" />
 
+    <x-clipboard-fallback />
+
     {{-- documentation.js before app.js on purpose: app.js calls Alpine.start()
          as it executes, and the shell's x-data reaches for window.RelaticleDocs
          the moment Alpine initialises. --}}

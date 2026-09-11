@@ -108,3 +108,22 @@ function loginViaBrowser(User $user): AwaitableWebpage
         ->type('[id="form.password"]', 'password')
         ->click('button[type="submit"]');
 }
+
+function removeClipboardApi(AwaitableWebpage $page): void
+{
+    $page->script(<<<'JS'
+        (() => {
+            Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true })
+
+            new Function(document.querySelector('script[data-clipboard-fallback]').textContent)()
+
+            document.execCommand = () => {
+                const field = document.activeElement
+
+                window.copiedText = field.value.slice(field.selectionStart, field.selectionEnd)
+
+                return true
+            }
+        })()
+        JS);
+}
