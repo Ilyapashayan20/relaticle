@@ -472,12 +472,13 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply rounded-xl;
 }
 
-/* asmit/resized-column sets overflow-x: auto on the same node Filament marks
-   as the fixed positioning context. CSS then computes overflow-y to auto as
-   well, which is the same clipping ancestor as above. Keep horizontal scroll
-   on .fi-ta-table-wrapper only. */
+/* This node wraps the table and is Filament's fixed positioning context, so
+   overflow-y must stay visible or row action menus get clipped. overflow-x
+   carries the scroll for a table wider than its card; without it the table
+   spills past the card border and its row actions cannot be reached. */
 .fi-ta-content-ctn.fi-fixed-positioning-context {
-    overflow: visible;
+    overflow-x: auto;
+    overflow-y: visible;
 }
 
 .fi-ta-table thead {
