@@ -14,11 +14,18 @@ use Filament\Schemas\Components\Actions;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Width;
+use Filament\Support\Icons\Heroicon;
+use Filament\Support\View\ComponentAttributeBag;
+use Illuminate\Contracts\Support\Htmlable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\HtmlString;
+use Illuminate\Support\Js;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Laravel\Jetstream\Jetstream;
 use Laravel\Sanctum\NewAccessToken;
+
+use function Filament\Support\generate_icon_html;
 
 final class CreateAccessToken extends BaseLivewireComponent
 {
@@ -106,17 +113,73 @@ final class CreateAccessToken extends BaseLivewireComponent
                     ->label(__('access-tokens.form.token'))
                     ->default($this->plainTextToken ?? '')
                     ->readOnly()
-                    ->suffixAction(
-                        Action::make('copyToken')
-                            ->icon('heroicon-o-clipboard')
-                            ->tooltip(__('access-tokens.modals.show_token.copy_to_clipboard_tooltip'))
-                            ->alpineClickHandler(sprintf(
-                                'window.navigator.clipboard.writeText($wire.plainTextToken); $tooltip(%s);',
-                                json_encode(__('access-tokens.modals.show_token.copied_tooltip'), JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
-                            )),
-                    ),
+                    ->suffixAction($this->copyTokenAction()),
             ])
             ->after(fn (): null => ($this->plainTextToken = null));
+    }
+
+    private function copyTokenAction(): Action
+    {
+        $copyLabel = Js::from(__('access-tokens.modals.show_token.copy_to_clipboard_tooltip'));
+        $copiedLabel = Js::from(__('access-tokens.modals.show_token.copied_tooltip'));
+
+        return Action::make('copyToken')
+            ->icon($this->copyTokenIcon())
+            ->label(__('access-tokens.modals.show_token.copy_to_clipboard_tooltip'))
+            ->extraAttributes([
+                'x-data' => '{ copied: false }',
+                'x-tooltip' => <<<JS
+                    {
+                        content: copied ? {$copiedLabel} : {$copyLabel},
+                        theme: \$store.theme,
+                        trigger: 'mouseenter focus',
+                        hideOnClick: false,
+                    }
+                    JS,
+                'x-bind:class' => "copied ? 'fi-color-success' : null",
+            ])
+            ->alpineClickHandler(<<<'JS'
+                (() => {
+                    const input = $el.closest('.fi-input-wrp').querySelector('input')
+
+                    const flash = () => {
+                        copied = true
+
+                        $nextTick(() => $el.__x_tippy?.show())
+
+                        setTimeout(() => {
+                            copied = false
+                            $nextTick(() => $el.__x_tippy?.hide())
+                        }, 2000)
+                    }
+
+                    if (navigator.clipboard) {
+                        navigator.clipboard.writeText(input.value).then(flash)
+
+                        return
+                    }
+
+                    input.select()
+                    document.execCommand('copy')
+                    input.setSelectionRange(0, 0)
+                    input.blur()
+                    flash()
+                })()
+                JS);
+    }
+
+    private function copyTokenIcon(): Htmlable
+    {
+        $clipboard = generate_icon_html(Heroicon::OutlinedClipboard, attributes: new ComponentAttributeBag([
+            'x-show' => '! copied',
+        ]));
+
+        $check = generate_icon_html(Heroicon::OutlinedCheckCircle, attributes: new ComponentAttributeBag([
+            'x-show' => 'copied',
+            'x-cloak' => true,
+        ]));
+
+        return new HtmlString($clipboard->toHtml().$check->toHtml());
     }
 
     public function createToken(): void
