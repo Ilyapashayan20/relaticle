@@ -472,15 +472,6 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply rounded-xl;
 }
 
-/* This node wraps the table and is Filament's fixed positioning context, so
-   overflow-y must stay visible or row action menus get clipped. overflow-x
-   carries the scroll for a table wider than its card; without it the table
-   spills past the card border and its row actions cannot be reached. */
-.fi-ta-content-ctn.fi-fixed-positioning-context {
-    overflow-x: auto;
-    overflow-y: visible;
-}
-
 .fi-ta-table thead {
     @apply bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900;
 }
