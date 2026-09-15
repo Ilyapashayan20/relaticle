@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\BillingStatus;
+use App\Enums\MediaCollection;
 use App\Enums\OnboardingReferralSource;
 use App\Enums\OnboardingUseCase;
 use App\Enums\Plan;
@@ -15,6 +16,7 @@ use App\Events\WorkspaceUpdated;
 use App\Models\ActivityLog\Activity;
 use App\Models\ActivityLog\Scopes\WorkspaceScope;
 use App\Services\AvatarService;
+use App\Support\Media\UploadAllowlist;
 use App\Support\ReservedSlugAwareGenerateSlugAction;
 use Carbon\CarbonImmutable;
 use Database\Factories\WorkspaceFactory;
@@ -88,7 +90,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     use HasUlids;
     use InteractsWithMedia;
 
-    public const string LOGO_MEDIA_COLLECTION = 'logo';
+    public const string LOGO_MEDIA_COLLECTION = MediaCollection::Logo->value;
 
     // SVG is excluded on purpose: it carries script, and a workspace logo is the
     // one image members upload to the public disk on our own origin.
@@ -133,7 +135,7 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
         'discord', 'llms.txt',
 
         // API & developer
-        'api', 'graphql', 'mcp', 'webhooks', 'developer', 'developers', 'connect', 'user', 'users',
+        'api', 'graphql', 'mcp', 'media', 'webhooks', 'developer', 'developers', 'connect', 'user', 'users',
 
         // Marketing & public
         'home', 'welcome', 'features', 'demo', 'enterprise', 'pro',
@@ -371,7 +373,11 @@ final class Workspace extends Model implements HasAvatar, HasMedia, Onboardable
     {
         $this->addMediaCollection(self::LOGO_MEDIA_COLLECTION)
             ->acceptsMimeTypes(self::LOGO_MIME_TYPES)
-            ->singleFile();
+            ->singleFile()
+            ->useDisk('public');
+
+        $this->addMediaCollection(MediaCollection::PendingUploads->value)
+            ->acceptsMimeTypes(UploadAllowlist::mimeTypes());
     }
 
     /**
