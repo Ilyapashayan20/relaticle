@@ -91,16 +91,26 @@ html.fi:has(body.fi-panel-app) {
 .fi-sidebar-search-ctn {
     /* 12px above and below the rule; the field then gets a wider gap before the
        navigation starts (`.fi-sidebar-nav` already opens with 10px of its own). */
-    @apply mt-3 flex items-center justify-center gap-x-2 border-t border-gray-200 px-4 pt-3 pb-2.5 dark:border-white/10;
+    @apply mt-3 flex items-center justify-center gap-x-2 overflow-visible border-t border-gray-200 px-4 pt-3 pb-2.5 dark:border-white/10;
 }
 
 .fi-sidebar-search {
-    @apply min-w-0 flex-1;
+    @apply min-w-0 flex-1 overflow-visible;
 
     /* The panel gutters global search itself when it owns the sidebar slot; the
        row owns it here. */
+    .fi-global-search-ctn,
+    .fi-global-search {
+        @apply overflow-visible;
+    }
+
     .fi-global-search-ctn {
         @apply mx-0 mt-0;
+    }
+
+    /* Same panel as the topbar search dropdown: 24rem, not the 268px rail. */
+    .fi-global-search-results-ctn {
+        @apply start-0 z-20 w-screen max-w-sm;
     }
 
     /* Compact, flat field: the panel default is taller and stacks a drop shadow
@@ -298,6 +308,10 @@ html.fi:has(body.fi-panel-app) {
        slides out behind the narrowing edge like every other one. An open
        sidebar must not clip it: the results panel is absolutely positioned and
        wider than the column, so a clip here hides every result on desktop. */
+    .fi-sidebar.fi-sidebar-open {
+        overflow: visible;
+    }
+
     .fi-sidebar:not(.fi-sidebar-open) .fi-sidebar-search {
         @apply overflow-hidden;
     }
