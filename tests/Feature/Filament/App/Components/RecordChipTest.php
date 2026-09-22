@@ -264,6 +264,44 @@ it('keeps a chip avatar smaller than the themed filament avatar', function (): v
         ->and($chip)->not->toContain('fi-avatar');
 });
 
+it('puts the full record name on the truncated chip for hover', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create([
+        'name' => 'Pashayanhray Extra Long',
+    ]);
+
+    expect(RecordChip::forRecord($person)->toHtml())
+        ->toContain('title="Pashayanhray Extra Long"')
+        ->toContain('truncate');
+});
+
+it('puts a record url on the chip logo and name', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Escrow']);
+
+    $html = RecordChip::forRecord($company)->url('https://relaticle.test/app/companies/escrow')->toHtml();
+
+    expect($html)
+        ->toStartWith('<a ')
+        ->toContain('href="https://relaticle.test/app/companies/escrow"')
+        ->toContain('Escrow')
+        ->toContain('</a>');
+});
+
+it('opens a related company only from the chip logo and name', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create(['name' => 'Escrow']);
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create([
+        'company_id' => $company->getKey(),
+    ]);
+
+    $html = livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->assertOk()
+        ->html();
+
+    expect($html)
+        ->toContain('href="'.CompanyResource::getUrl('view', [$company]).'"')
+        ->toContain('Escrow')
+        ->not->toMatch('/<a\b[^>]*\bfi-in-entry-content\b/');
+});
+
 it('renders no chip when the related record is missing', function (): void {
     People::factory()->recycle([$this->user, $this->workspace])->create(['company_id' => null]);
 
