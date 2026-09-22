@@ -8,25 +8,41 @@ use App\Enums\CustomFields\PeopleField;
 use App\Enums\CustomFieldType;
 use App\Enums\WorkspaceRole;
 use App\Filament\Concerns\EditsRecordFieldsInline;
+use App\Filament\Concerns\RendersRecordSplitView;
+use App\Filament\CustomFields\EmailEntry;
+use App\Filament\CustomFields\EmailFieldType;
+use App\Filament\CustomFields\RichEditorComponent;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
+use Filament\Actions\Testing\TestAction;
 use Filament\Facades\Filament;
+use Filament\Forms\Components\ColorPicker;
+use Filament\Forms\Components\RichEditor;
+use Filament\Schemas\Components\Component;
 use Illuminate\Support\Collection;
+use Relaticle\CustomFields\Data\CustomFieldSettingsData;
+use Relaticle\CustomFields\Filament\Integration\Components\Forms\PhoneInput\PhoneInputComponent;
 
 mutates(
     EditsRecordFieldsInline::class,
+    RendersRecordSplitView::class,
     ViewOpportunity::class,
     ViewCompany::class,
     ViewPeople::class,
     InlineField::class,
+    InlineCommit::class,
     CustomFieldType::class,
+    EmailEntry::class,
+    EmailFieldType::class,
+    RichEditorComponent::class,
 );
 
 beforeEach(function (): void {
@@ -125,6 +141,7 @@ it('keeps the editor open and the typed amount when validation fails', function 
         ->set('inlineEditData.custom_fields.amount', 'not-a-number')
         ->call('saveInlineField')
         ->assertHasErrors()
+        ->assertNotified()
         ->assertSet('inlineEditingField', OpportunityField::AMOUNT->value)
         ->assertSet('inlineEditData.custom_fields.amount', 'not-a-number');
 
@@ -159,6 +176,7 @@ it('rejects a stale opportunity save and keeps the draft', function (): void {
     $page->set('inlineEditData.custom_fields.amount', 99)
         ->call('saveInlineField')
         ->assertHasErrors(['inlineEditConflict'])
+        ->assertNotified()
         ->assertSet('inlineEditingField', OpportunityField::AMOUNT->value)
         ->assertSet('inlineEditData.custom_fields.amount', 99);
 
@@ -196,7 +214,7 @@ it('does not persist when the opportunity inline edit is cancelled', function ()
     expect(storedCustomFieldValue($record, $amount))->toBeEmpty();
 });
 
-it('keeps undo next to the amount after a successful save', function (): void {
+it('saves an opportunity amount through the update action', function (): void {
     $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
     $amount = opportunityAmountField();
     $record->saveCustomFieldValue($amount, 100);
@@ -207,25 +225,9 @@ it('keeps undo next to the amount after a successful save', function (): void {
         ->call('saveInlineField')
         ->assertSet('inlineEditingField', null)
         ->assertNotNotified()
-        ->assertSee('fi-inline-field-feedback', false)
-        ->assertSee('fi-inline-field-saved', false)
-        ->assertSee('fi-inline-field-undo', false)
-        ->assertSee(__('filament/inline-edit.saved'));
-});
-
-it('restores the previous amount when the save is undone', function (): void {
-    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
-    $amount = opportunityAmountField();
-    $record->saveCustomFieldValue($amount, 100);
-
-    livewire(ViewOpportunity::class, ['record' => $record->getKey()])
-        ->call('startInlineEdit', OpportunityField::AMOUNT->value)
-        ->set('inlineEditData.custom_fields.amount', 200)
-        ->call('saveInlineField')
-        ->call('undoInlineField')
         ->assertHasNoErrors();
 
-    expect(storedCustomFieldValue($record, $amount))->toEqual(100);
+    expect(storedCustomFieldValue($record, $amount))->toEqual(200);
 });
 
 it('renders the close date picker after click-to-edit starts', function (): void {
@@ -251,14 +253,16 @@ it('saves an opportunity close date', function (): void {
     expect((string) storedCustomFieldValue($record, $closeDate))->toStartWith('2026-09-20');
 });
 
-it('keeps the header edit-all action on an opportunity', function (): void {
+it('puts copy and delete on the opportunity details card instead of edit all', function (): void {
     $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    $copy = TestAction::make('copyPageUrl')->schemaComponent('opportunityDetails');
+    $delete = TestAction::make('delete')->schemaComponent('opportunityDetails');
 
     livewire(ViewOpportunity::class, ['record' => $record->getKey()])
-        ->assertActionExists('edit')
-        ->assertActionHasLabel('edit', __('filament/resources/opportunity.pages.view.actions.edit.label'))
-        ->mountAction('edit')
-        ->assertActionMounted('edit');
+        ->assertActionDoesNotExist(TestAction::make('edit')->schemaComponent('opportunityDetails'))
+        ->assertActionDoesNotExist('edit')
+        ->assertActionExists($copy)
+        ->assertActionExists($delete);
 });
 
 it('does not let a viewer start or save an inline opportunity edit', function (): void {
@@ -295,14 +299,16 @@ it('saves a company account owner through the update action', function (): void 
     expect($company->fresh()->account_owner_id)->toBe($owner->getKey());
 });
 
-it('keeps the header edit-all action on a company', function (): void {
+it('puts copy and delete on the company details card instead of edit all', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $copy = TestAction::make('copyPageUrl')->schemaComponent('companyDetails');
+    $delete = TestAction::make('delete')->schemaComponent('companyDetails');
 
     livewire(ViewCompany::class, ['record' => $company->getKey()])
-        ->assertActionExists('edit')
-        ->assertActionHasLabel('edit', __('filament/resources/company.pages.view.actions.edit.label'))
-        ->mountAction('edit')
-        ->assertActionMounted('edit');
+        ->assertActionDoesNotExist(TestAction::make('edit')->schemaComponent('companyDetails'))
+        ->assertActionDoesNotExist('edit')
+        ->assertActionExists($copy)
+        ->assertActionExists($delete);
 });
 
 it('saves a person job title through the update action', function (): void {
@@ -334,14 +340,15 @@ it('clears a person job title when saved empty', function (): void {
     expect(storedCustomFieldValue($person, $jobTitle))->toBeEmpty();
 });
 
-it('keeps the header edit-all action on a person', function (): void {
+it('puts copy and delete on the person details card instead of edit all', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $copy = TestAction::make('copyPageUrl')->schemaComponent('personDetails');
+    $delete = TestAction::make('delete')->schemaComponent('personDetails');
 
     livewire(ViewPeople::class, ['record' => $person->getKey()])
-        ->assertActionExists('edit')
-        ->assertActionHasLabel('edit', __('filament/resources/person.pages.view.actions.edit.label'))
-        ->mountAction('edit')
-        ->assertActionMounted('edit');
+        ->assertActionDoesNotExist(TestAction::make('edit')->schemaComponent('personDetails'))
+        ->assertActionExists($copy)
+        ->assertActionExists($delete);
 });
 
 it('saves an opportunity name through the update action', function (): void {
@@ -363,8 +370,7 @@ it('does not show a done button for a simple amount field', function (): void {
 
     livewire(ViewOpportunity::class, ['record' => $record->getKey()])
         ->call('startInlineEdit', OpportunityField::AMOUNT->value)
-        ->assertDontSee('fi-inline-field-done', false)
-        ->assertSee('fi-inline-field-saving', false);
+        ->assertDontSee('fi-inline-field-done', false);
 });
 
 it('does not show a done button for a person email list', function (): void {
@@ -373,6 +379,31 @@ it('does not show a done button for a person email list', function (): void {
     livewire(ViewPeople::class, ['record' => $person->getKey()])
         ->call('startInlineEdit', PeopleField::EMAILS->value)
         ->assertDontSee('fi-inline-field-done', false);
+});
+
+it('shows the first person email and extra count then starts edit', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $emails = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::EMAILS)
+        ->firstOrFail();
+    $person->saveCustomFieldValue($emails, [
+        'first@example.test',
+        'second@example.test',
+        'third@example.test',
+    ]);
+
+    livewire(ViewPeople::class, ['record' => $person->fresh()->getKey()])
+        ->assertSee('mailto:first@example.test', false)
+        ->assertDontSee('mailto:second@example.test', false)
+        ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 2]))
+        ->assertDontSee(__('filament/inline-edit.show_less'))
+        ->assertSeeHtml('fi-multi-value-copy')
+        ->assertDontSeeHtml('fi-multi-value-toggle')
+        ->assertDontSeeHtml('max-w-[250px]')
+        ->call('startInlineEdit', PeopleField::EMAILS->value)
+        ->assertSet('inlineEditingField', PeopleField::EMAILS->value)
+        ->assertSeeHtml('fi-inline-field-editor');
 });
 
 it('renders a person email as a mailto link and still starts edit from the field', function (): void {
@@ -452,6 +483,7 @@ it('saves a person linkedin url after a failed validation is corrected', functio
         ->set('inlineEditData.custom_fields.linkedin', 'not a url')
         ->call('saveInlineField')
         ->assertHasErrors()
+        ->assertNotified()
         ->assertSet('inlineEditingField', PeopleField::LINKEDIN->value)
         ->set('inlineEditData.custom_fields.linkedin', 'sas.com')
         ->call('saveInlineField')
@@ -478,6 +510,34 @@ it('saves a person linkedin url without a scheme', function (): void {
     expect(storedCustomFieldValue($person, $linkedin))->toBe(['test.com']);
 });
 
+it('shows set-field placeholders on empty person values', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->assertSee('Set company')
+        ->assertSee('Set emails')
+        ->assertSee('Set phone number')
+        ->assertSee('Set job title')
+        ->assertSee('Set linkedin')
+        ->assertSeeHtml('class="fi-in-placeholder"')
+        ->assertDontSeeHtml('<span class="text-gray-400 dark:text-gray-500">—</span>');
+});
+
+it('renders a live company icp switch instead of click-to-edit', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSeeHtml('data-inline-field="icp"')
+        ->assertSeeHtml('role="switch"')
+        ->assertSeeHtml('aria-checked="false"')
+        ->assertSee('fi-inline-boolean', false)
+        ->assertSee('fi-toggle', false)
+        ->assertDontSee('Set ICP')
+        ->call('startInlineEdit', CompanyField::ICP->value)
+        ->assertSet('inlineEditingField', null)
+        ->assertDontSee('fi-inline-field-editor', false);
+});
+
 it('saves a company icp toggle through the update action', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
     $icp = CustomField::query()
@@ -486,13 +546,84 @@ it('saves a company icp toggle through the update action', function (): void {
         ->firstOrFail();
 
     livewire(ViewCompany::class, ['record' => $company->getKey()])
-        ->call('startInlineEdit', CompanyField::ICP->value)
-        ->set('inlineEditData.custom_fields.icp', true)
-        ->call('saveInlineField')
+        ->call('toggleInlineBoolean', CompanyField::ICP->value)
         ->assertHasNoErrors()
-        ->assertSet('inlineEditingField', null);
+        ->assertSet('inlineEditingField', null)
+        ->assertSeeHtml('aria-checked="true"');
 
     expect(storedCustomFieldValue($company, $icp))->toBeTrue();
+});
+
+it('turns a company icp toggle back off through the update action', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $icp = CustomField::query()
+        ->forEntity(Company::class)
+        ->where('code', CompanyField::ICP)
+        ->firstOrFail();
+    $company->saveCustomFieldValue($icp, true);
+
+    livewire(ViewCompany::class, ['record' => $company->fresh()->getKey()])
+        ->assertSeeHtml('aria-checked="true"')
+        ->call('toggleInlineBoolean', CompanyField::ICP->value)
+        ->assertHasNoErrors()
+        ->assertSeeHtml('aria-checked="false"');
+
+    expect(storedCustomFieldValue($company, $icp))->toBeFalse();
+});
+
+it('does not let a viewer toggle a company icp switch', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+    Filament::setTenant($this->workspace);
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSeeHtml('role="switch"')
+        ->assertSeeHtml('disabled')
+        ->call('toggleInlineBoolean', CompanyField::ICP->value)
+        ->assertForbidden();
+});
+
+it('ignores a boolean toggle on a field that is not a boolean', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
+        'name' => 'Northwind',
+    ]);
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->call('toggleInlineBoolean', 'name')
+        ->assertHasNoErrors();
+
+    expect($company->fresh()->name)->toBe('Northwind');
+});
+
+it('saves a tenant-defined checkbox through the live switch', function (): void {
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $sectionId = CustomField::query()
+        ->forEntity(Company::class)
+        ->where('code', CompanyField::ICP)
+        ->firstOrFail()
+        ->getAttribute('custom_field_section_id');
+    $vip = CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'company',
+        'code' => 'vip',
+        'name' => 'VIP',
+        'type' => CustomFieldType::CHECKBOX->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSeeHtml('data-inline-field="vip"')
+        ->assertSeeHtml('aria-label="VIP"')
+        ->call('toggleInlineBoolean', 'vip')
+        ->assertHasNoErrors()
+        ->assertSeeHtml('aria-checked="true"');
+
+    expect(storedCustomFieldValue($company, $vip))->toBeTrue();
 });
 
 it('saves a tenant-defined custom text field through the update action', function (): void {
@@ -517,6 +648,59 @@ it('saves a tenant-defined custom text field through the update action', functio
         ->assertSet('inlineEditingField', null);
 
     expect(storedCustomFieldValue($person, $nickname))->toBe('TC');
+});
+
+it('opens the same color picker as the edit-all form', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $sectionId = peopleJobTitleField()->getAttribute('custom_field_section_id');
+    CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'people',
+        'code' => 'brand_color',
+        'name' => 'Brand color',
+        'type' => CustomFieldType::COLOR_PICKER->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $page = livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', 'brand_color')
+        ->assertSet('inlineEditingField', 'brand_color')
+        ->assertSee('fi-fo-color-picker', false)
+        ->instance();
+
+    $picker = collect($page->getSchema('inlineEditForm')->getFlatComponents(withHidden: true))
+        ->first(fn (Component $component): bool => $component instanceof ColorPicker);
+
+    expect($picker)->not->toBeNull()
+        ->and($picker->isLive())->toBeFalse()
+        ->and($picker->isAutofocused())->toBeFalse();
+});
+
+it('saves a tenant-defined color picker through the update action', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $sectionId = peopleJobTitleField()->getAttribute('custom_field_section_id');
+    $color = CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'people',
+        'code' => 'brand_color',
+        'name' => 'Brand color',
+        'type' => CustomFieldType::COLOR_PICKER->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', 'brand_color')
+        ->set('inlineEditData.custom_fields.brand_color', '#d62828')
+        ->assertSet('inlineEditingField', 'brand_color')
+        ->call('saveInlineField')
+        ->assertHasNoErrors()
+        ->assertSet('inlineEditingField', null);
+
+    expect(storedCustomFieldValue($person, $color))->toBe('#d62828');
 });
 
 it('ignores a field code that is not editable on the record', function (): void {
@@ -564,12 +748,25 @@ it('keeps an invalid person phone in the editor', function (): void {
         ->set('inlineEditData.custom_fields.phone_number', [['country' => 'US', 'number' => 'not-a-phone']])
         ->call('saveInlineField')
         ->assertHasErrors()
-        ->assertSee('must be a valid phone number')
-        ->assertSee('fi-fo-field-wrp-error-message', false)
+        ->assertNotified()
         ->assertSet('inlineEditingField', PeopleField::PHONE_NUMBER->value)
         ->assertSet('inlineEditData.custom_fields.phone_number.0.number', 'not-a-phone');
 
     expect(storedCustomFieldValue($person, $phone))->toBeEmpty();
+});
+
+it('keeps the phone editor from saving until enter or blur', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $page = livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', PeopleField::PHONE_NUMBER->value)
+        ->instance();
+
+    $input = collect($page->getSchema('inlineEditForm')->getFlatComponents(withHidden: true))
+        ->first(fn (Component $component): bool => $component instanceof PhoneInputComponent);
+
+    expect($input)->not->toBeNull()
+        ->and($input->isLive())->toBeFalse();
 });
 
 it('saves a person phone number after a failed validation is corrected', function (): void {
@@ -584,6 +781,7 @@ it('saves a person phone number after a failed validation is corrected', functio
         ->set('inlineEditData.custom_fields.phone_number', [['country' => 'US', 'number' => 'not-a-phone']])
         ->call('saveInlineField')
         ->assertHasErrors()
+        ->assertNotified()
         ->assertSet('inlineEditingField', PeopleField::PHONE_NUMBER->value)
         ->set('inlineEditData.custom_fields.phone_number', [['country' => 'US', 'number' => '4155550103']])
         ->call('saveInlineField')
@@ -608,4 +806,107 @@ it('saves a person phone number through the update action', function (): void {
         ->assertSet('inlineEditingField', null);
 
     expect(storedCustomFieldValue($person, $phone))->toBe(['+14155550103']);
+});
+
+it('shows a set-field placeholder on an empty company rich editor', function (): void {
+    CustomField::forceCreate([
+        'tenant_id' => $this->workspace->id,
+        'code' => 'account_plan',
+        'name' => 'Account plan',
+        'type' => CustomFieldType::RICH_EDITOR->value,
+        'entity_type' => 'company',
+        'sort_order' => 50,
+        'active' => true,
+        'system_defined' => false,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData,
+    ]);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->assertSee('Set account plan')
+        ->assertSeeHtml('data-inline-field="account_plan"')
+        ->assertDontSee('fi-inline-field-editor', false);
+});
+
+it('opens a right-side sheet rich editor from a company field click', function (): void {
+    CustomField::forceCreate([
+        'tenant_id' => $this->workspace->id,
+        'code' => 'account_plan',
+        'name' => 'Account plan',
+        'type' => CustomFieldType::RICH_EDITOR->value,
+        'entity_type' => 'company',
+        'sort_order' => 50,
+        'active' => true,
+        'system_defined' => false,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData,
+    ]);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    $page = livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->call('startInlineEdit', 'account_plan')
+        ->assertSet('inlineEditingField', null)
+        ->assertActionMounted('editRichField')
+        ->assertDontSee('fi-inline-field-editor', false)
+        ->instance();
+
+    $editor = collect($page->getSchema($page->getMountedActionSchemaName())->getFlatComponents(withHidden: true))
+        ->first(fn (Component $component): bool => $component instanceof RichEditor);
+
+    expect($editor)->not->toBeNull()
+        ->and($editor->getPlaceholder())->toBeNull()
+        ->and($editor->getExtraAttributes())->toHaveKey('data-slash-menu')
+        ->and($editor->getExtraAttributes()['class'])->toContain('fi-fo-rich-editor-seamless')
+        ->and($page->getAction('editRichField')->isModalSlideOver())->toBeTrue();
+});
+
+it('saves a company rich editor field through the right-side sheet', function (): void {
+    $plan = CustomField::forceCreate([
+        'tenant_id' => $this->workspace->id,
+        'code' => 'account_plan',
+        'name' => 'Account plan',
+        'type' => CustomFieldType::RICH_EDITOR->value,
+        'entity_type' => 'company',
+        'sort_order' => 50,
+        'active' => true,
+        'system_defined' => false,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData,
+    ]);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->callAction(TestAction::make('editRichField')->arguments(['code' => 'account_plan']), [
+            'custom_fields' => ['account_plan' => '<p>Q3 plan</p>'],
+        ])
+        ->assertHasNoActionErrors();
+
+    expect(storedCustomFieldValue($company, $plan))->toContain('Q3 plan');
+});
+
+it('does not let a viewer open the company rich editor sheet', function (): void {
+    CustomField::forceCreate([
+        'tenant_id' => $this->workspace->id,
+        'code' => 'account_plan',
+        'name' => 'Account plan',
+        'type' => CustomFieldType::RICH_EDITOR->value,
+        'entity_type' => 'company',
+        'sort_order' => 50,
+        'active' => true,
+        'system_defined' => false,
+        'validation_rules' => [],
+        'settings' => new CustomFieldSettingsData,
+    ]);
+    $company = Company::factory()->recycle([$this->user, $this->workspace])->create();
+    $viewer = User::factory()->create();
+    $this->workspace->users()->attach($viewer, ['role' => WorkspaceRole::Viewer->value]);
+    $viewer->switchWorkspace($this->workspace);
+    $this->actingAs($viewer);
+    Filament::setTenant($this->workspace);
+
+    livewire(ViewCompany::class, ['record' => $company->getKey()])
+        ->call('startInlineEdit', 'account_plan')
+        ->assertActionNotMounted('editRichField')
+        ->assertSet('inlineEditingField', null);
 });

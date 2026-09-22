@@ -10,6 +10,7 @@ use App\Actions\People\UpdatePeople;
 use App\Enums\CustomFieldType;
 use App\Filament\Components\Forms\RecordSelect;
 use App\Filament\Components\Forms\WorkspaceMemberSelect;
+use App\Filament\CustomFields\RichEditorComponent;
 use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
 use App\Models\Company;
@@ -18,16 +19,21 @@ use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Filament\Actions\Action;
+use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\Entry;
+use Filament\Infolists\Components\ViewEntry;
+use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Html;
 use Filament\Schemas\Components\Icon;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\IconSize;
+use Filament\Support\Enums\Width;
 use Filament\Support\Icons\Heroicon;
 use Filament\Support\Livewire\Partials\PartialsComponentHook;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -35,6 +41,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
+use Illuminate\Support\Js;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
 use Relaticle\CustomFields\Facades\CustomFields;
@@ -58,15 +65,6 @@ trait EditsRecordFieldsInline
     #[Locked]
     public bool $inlineEditHydrating = false;
 
-    #[Locked]
-    public ?string $inlineUndoField = null;
-
-    /** @var array<string, mixed>|null */
-    #[Locked]
-    public ?array $inlineUndoPayload = null;
-
-    public ?string $inlineEditStatus = null;
-
     public function startInlineEdit(string $code): void
     {
         $field = $this->resolveInlineField($code);
@@ -75,12 +73,15 @@ trait EditsRecordFieldsInline
             return;
         }
 
+        if ($field->opensInModal()) {
+            $this->mountAction('editRichField', ['code' => $code]);
+
+            return;
+        }
+
         $this->eagerLoadInlineRecord();
 
         $this->inlineEditingField = $code;
-        $this->inlineEditStatus = null;
-        $this->inlineUndoField = null;
-        $this->inlineUndoPayload = null;
         $this->inlineEditVersion = $this->recordVersion();
         $this->flushInlineEditForm();
         $this->resetErrorBag();
@@ -125,10 +126,10 @@ trait EditsRecordFieldsInline
 
         if ($this->isInlineEditStale()) {
             $draft = $this->inlineEditData;
-            $this->addError(
-                'inlineEditConflict',
-                __('filament/inline-edit.conflict', ['current' => $this->currentInlineDisplayValue($field)]),
-            );
+            $conflict = __('filament/inline-edit.conflict', ['current' => $this->currentInlineDisplayValue($field)]);
+            $conflict = is_string($conflict) ? $conflict : '';
+            $this->addError('inlineEditConflict', $conflict);
+            $this->notifyInlineFailure($conflict);
             $this->inlineEditVersion = $this->recordVersion();
             $this->refreshInlineEditedRecord();
             $this->inlineEditData = $draft;
@@ -147,21 +148,42 @@ trait EditsRecordFieldsInline
         try {
             $payload = $this->inlinePayloadFromState($field, $schema->getState());
         } catch (ValidationException $exception) {
+            $this->notifyInlineFailure($this->firstValidationMessage($exception));
             $this->forceInlineInfolistRender();
 
             throw $exception;
         }
-
-        $this->inlineUndoField = $code;
-        $this->inlineUndoPayload = $this->currentInlineFormState($field);
 
         $this->persistInlinePayload($user, $record, $payload);
 
         $this->inlineEditingField = null;
         $this->inlineEditData = [];
         $this->inlineEditVersion = null;
-        $this->inlineEditStatus = __('filament/inline-edit.saved');
         $this->flushInlineEditForm();
+        $this->refreshInlineEditedRecord();
+    }
+
+    public function toggleInlineBoolean(string $code): void
+    {
+        $user = auth()->user();
+        $record = $this->getRecord();
+
+        abort_unless($user instanceof User && $user->can('update', $record), 403);
+
+        $field = $this->resolveInlineField($code);
+
+        if (! $field instanceof InlineField || ! $field->isBoolean()) {
+            return;
+        }
+
+        $this->eagerLoadInlineRecord();
+
+        $next = ! $this->currentInlineBoolean($field);
+
+        $this->inlineEditingField = null;
+        $this->inlineEditData = [];
+        $this->inlineEditVersion = null;
+        $this->persistInlinePayload($user, $record, $this->inlineBooleanPayload($field, $next));
         $this->refreshInlineEditedRecord();
     }
 
@@ -176,31 +198,6 @@ trait EditsRecordFieldsInline
         $this->forceInlineInfolistRender();
     }
 
-    public function undoInlineField(): void
-    {
-        $code = $this->inlineUndoField;
-        $payload = $this->inlineUndoPayload;
-        $field = $this->resolveInlineField((string) $code);
-
-        if (! $field instanceof InlineField || ! is_array($payload)) {
-            return;
-        }
-
-        $user = auth()->user();
-        $record = $this->getRecord();
-
-        abort_unless($user instanceof User && $user->can('update', $record), 403);
-
-        $this->persistInlinePayload($user, $record, $payload);
-
-        $this->inlineUndoField = null;
-        $this->inlineUndoPayload = null;
-        $this->inlineEditingField = null;
-        $this->inlineEditStatus = null;
-        $this->flushInlineEditForm();
-        $this->refreshInlineEditedRecord();
-    }
-
     public function isInlineEditing(string $code): bool
     {
         return $this->inlineEditingField === $code;
@@ -211,14 +208,66 @@ trait EditsRecordFieldsInline
         $user = auth()->user();
         $record = $this->getRecord();
 
-        return $this->resolveInlineField($code) instanceof InlineField
+        $field = $this->resolveInlineField($code);
+
+        return $field instanceof InlineField
+            && ! $field->isBoolean()
             && $user instanceof User
             && $user->can('update', $record);
     }
 
-    public function canUndoInlineField(string $code): bool
+    public function editRichFieldAction(): Action
     {
-        return $this->inlineUndoField === $code && $this->inlineUndoPayload !== null;
+        return Action::make('editRichField')
+            ->authorize(function (): bool {
+                $user = auth()->user();
+
+                return $user instanceof User && $user->can('update', $this->getRecord());
+            })
+            ->slideOver()
+            ->modalWidth(Width::FiveExtraLarge)
+            ->modalHeading(fn (array $arguments): string => $this->resolveModalRichField($arguments)?->label ?? '')
+            ->fillForm(function (array $arguments): array {
+                $field = $this->resolveModalRichField($arguments);
+
+                return $field instanceof InlineField ? $this->currentInlineFormState($field) : [];
+            })
+            ->schema(function (array $arguments): array {
+                $field = $this->resolveModalRichField($arguments);
+
+                if (! $field instanceof InlineField) {
+                    return [];
+                }
+
+                $components = $this->inlineFormFields($field);
+
+                foreach ($components as $component) {
+                    $component->dehydrated(true)->hiddenLabel();
+
+                    if ($component instanceof RichEditorComponent) {
+                        $component->asDocument()->autofocus();
+                    }
+                }
+
+                return $components;
+            })
+            ->action(function (array $data, array $arguments): void {
+                $user = auth()->user();
+                $record = $this->getRecord();
+
+                abort_unless($user instanceof User && $user->can('update', $record), 403);
+
+                $field = $this->resolveModalRichField($arguments);
+
+                if (! $field instanceof InlineField) {
+                    return;
+                }
+
+                $this->persistInlinePayload($user, $record, $this->inlinePayloadFromState($field, $data));
+                $this->inlineEditingField = null;
+                $this->inlineEditData = [];
+                $this->refreshInlineEditedRecord();
+            });
     }
 
     public function inlineEditForm(Schema $schema): Schema
@@ -301,7 +350,11 @@ trait EditsRecordFieldsInline
 
     private function applyInlineCommitBehavior(Field $field, InlineCommit $commit): void
     {
-        $field->dehydrated(true)->hiddenLabel()->autofocus();
+        $field->dehydrated(true)->hiddenLabel();
+
+        if (! $field instanceof ColorPicker) {
+            $field->autofocus();
+        }
 
         if ($field instanceof DateTimePicker) {
             $field->closeOnDateSelection();
@@ -324,6 +377,36 @@ trait EditsRecordFieldsInline
         }
     }
 
+    /**
+     * @return array<string, int>
+     */
+    protected function stackedInlineColumns(): array
+    {
+        return [
+            'default' => 1,
+            'sm' => 1,
+            'md' => 1,
+            'lg' => 1,
+            'xl' => 1,
+            '2xl' => 1,
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    protected function stackedInlineColumnSpan(): array
+    {
+        return [
+            'default' => 'full',
+            'sm' => 'full',
+            'md' => 'full',
+            'lg' => 'full',
+            'xl' => 'full',
+            '2xl' => 'full',
+        ];
+    }
+
     protected function makeInlineEditable(Entry $entry, string $code): Entry
     {
         $field = $this->resolveInlineField($code);
@@ -332,8 +415,42 @@ trait EditsRecordFieldsInline
             return $entry;
         }
 
-        $entry->placeholder(__('filament/inline-edit.add', ['field' => $field->label]));
+        $entry->columnSpan($this->stackedInlineColumnSpan());
+
+        if (! $field->isBoolean()) {
+            $entry->placeholder($this->inlineEmptyPlaceholder($field));
+
+            if ($entry instanceof ViewEntry) {
+                $vendorView = $entry->getView();
+
+                if ($vendorView !== 'filament.infolists.components.inline-custom-field-entry') {
+                    $entry->view('filament.infolists.components.inline-custom-field-entry', [
+                        'vendorView' => $vendorView,
+                    ]);
+                }
+            }
+        }
+
         $entry->extraEntryWrapperAttributes(fn (): array => $this->inlineEntryWrapperAttributes($code));
+
+        if ($field->isBoolean()) {
+            $entry->afterContent([
+                Html::make(fn (): HtmlString => new HtmlString($this->inlineBooleanSwitchHtml($code))),
+            ]);
+
+            return $entry;
+        }
+
+        if ($field->opensInModal()) {
+            $entry->afterContent([
+                Icon::make(Heroicon::OutlinedPencilSquare)
+                    ->size(IconSize::Small)
+                    ->extraAttributes(['class' => 'fi-inline-edit-pencil'])
+                    ->visible(fn (): bool => $this->canStartInlineEdit($code)),
+            ]);
+
+            return $entry;
+        }
 
         $entry->belowContent(
             Html::make(fn (): HtmlString => new HtmlString($this->inlineEditorHtml($code)))
@@ -344,9 +461,7 @@ trait EditsRecordFieldsInline
             Icon::make(Heroicon::OutlinedPencilSquare)
                 ->size(IconSize::Small)
                 ->extraAttributes(['class' => 'fi-inline-edit-pencil'])
-                ->visible(fn (): bool => $this->canStartInlineEdit($code) && ! $this->isInlineEditing($code) && ! $this->canUndoInlineField($code)),
-            Html::make(fn (): HtmlString => new HtmlString($this->inlineFeedbackHtml($code)))
-                ->visible(fn (): bool => $this->canUndoInlineField($code)),
+                ->visible(fn (): bool => $this->canStartInlineEdit($code) && ! $this->isInlineEditing($code)),
         ]);
 
         return $entry;
@@ -362,6 +477,14 @@ trait EditsRecordFieldsInline
             'data-inline-editing' => $this->isInlineEditing($code) ? 'true' : 'false',
         ];
 
+        $field = $this->resolveInlineField($code);
+
+        if ($field instanceof InlineField && $field->isBoolean()) {
+            $attributes['class'] = 'fi-inline-boolean';
+
+            return $attributes;
+        }
+
         if (! $this->canStartInlineEdit($code)) {
             return $attributes;
         }
@@ -372,14 +495,14 @@ trait EditsRecordFieldsInline
             return $attributes;
         }
 
-        $start = "startInlineEdit('{$code}')";
+        $start = 'startInlineEdit('.Js::from($code).')';
 
         $attributes['role'] = 'button';
         $attributes['tabindex'] = '0';
         $attributes['wire:click'] = $start;
         $attributes['wire:keydown.enter'] = $start;
         $attributes['wire:keydown.space.prevent'] = $start;
-        $attributes['x-on:click.capture'] = 'if ($event.target.closest?.(\'a[href]\')) $event.stopImmediatePropagation()';
+        $attributes['x-on:click.capture'] = 'if ($event.composedPath().some((n) => n.tagName === \'A\' && n.hasAttribute(\'href\'))) $event.stopImmediatePropagation()';
 
         return $attributes;
     }
@@ -438,30 +561,70 @@ trait EditsRecordFieldsInline
 
         return view('filament.infolists.components.inline-field-editor', [
             'formHtml' => $this->getSchema('inlineEditForm')?->toHtml() ?? '',
-            'error' => $this->inlineEditorError(),
             'saveOnEnterOrBlur' => $field?->commit === InlineCommit::OnEnterOrBlur,
             'saveOnChange' => $field?->commit === InlineCommit::OnChange,
             'saveOnConfirm' => $field?->commit === InlineCommit::OnConfirm,
         ])->render();
     }
 
-    private function inlineEditorError(): ?string
+    private function notifyInlineFailure(string $message): void
     {
-        if (! $this->getErrorBag()->has('inlineEditConflict')) {
-            return null;
+        if ($message === '') {
+            return;
         }
 
-        $message = $this->getErrorBag()->first('inlineEditConflict');
-
-        return is_string($message) && $message !== '' ? $message : null;
+        Notification::make()
+            ->title($message)
+            ->danger()
+            ->send();
     }
 
-    private function inlineFeedbackHtml(string $code): string
+    private function firstValidationMessage(ValidationException $exception): string
     {
-        return view('filament.infolists.components.inline-field-feedback', [
-            'status' => $this->inlineEditStatus,
-            'showUndo' => $this->canUndoInlineField($code),
+        $message = Arr::first(Arr::flatten($exception->errors()));
+
+        return is_string($message) ? $message : '';
+    }
+
+    private function inlineBooleanSwitchHtml(string $code): string
+    {
+        $field = $this->resolveInlineField($code);
+
+        if (! $field instanceof InlineField) {
+            return '';
+        }
+
+        $user = auth()->user();
+        $record = $this->getRecord();
+
+        return view('filament.infolists.components.inline-boolean-switch', [
+            'code' => $code,
+            'label' => $field->label,
+            'on' => $this->currentInlineBoolean($field),
+            'disabled' => ! $user instanceof User || ! $user->can('update', $record),
         ])->render();
+    }
+
+    private function currentInlineBoolean(InlineField $field): bool
+    {
+        $state = $this->currentInlineFormState($field);
+        $value = $field->isCustom()
+            ? data_get($state, 'custom_fields.'.$field->code)
+            : data_get($state, $field->code);
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function inlineBooleanPayload(InlineField $field, bool $value): array
+    {
+        if ($field->isCustom()) {
+            return ['custom_fields' => [$field->code => $value]];
+        }
+
+        return [$field->code => $value];
     }
 
     private function resolveInlineField(string $code): ?InlineField
@@ -567,7 +730,7 @@ trait EditsRecordFieldsInline
             $items[] = $item;
         }
 
-        return array_values($items);
+        return $items;
     }
 
     private function hydrateInlineCustomFieldValue(CustomField $customField, mixed $value): mixed
@@ -612,9 +775,28 @@ trait EditsRecordFieldsInline
         return ['custom_fields' => [$field->code => $value]];
     }
 
+    private function inlineEmptyPlaceholder(InlineField $field): string
+    {
+        return __('filament/inline-edit.set', ['field' => mb_strtolower($field->label)]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $arguments
+     */
+    private function resolveModalRichField(array $arguments): ?InlineField
+    {
+        $field = $this->resolveInlineField((string) ($arguments['code'] ?? ''));
+
+        if (! $field instanceof InlineField || ! $field->opensInModal()) {
+            return null;
+        }
+
+        return $field;
+    }
+
     private function currentInlineDisplayValue(InlineField $field): string
     {
-        $empty = __('filament/inline-edit.add', ['field' => $field->label]);
+        $empty = $this->inlineEmptyPlaceholder($field);
         $record = $this->getRecord();
 
         if (! $field->isCustom()) {
@@ -645,6 +827,12 @@ trait EditsRecordFieldsInline
 
         if (blank($value)) {
             return $empty;
+        }
+
+        if ($field->type === CustomFieldType::RICH_EDITOR && is_string($value)) {
+            $text = trim(html_entity_decode(strip_tags($value), ENT_QUOTES, 'UTF-8'));
+
+            return $text !== '' ? $text : $empty;
         }
 
         $option = $customField->options->firstWhere('id', $value)
@@ -756,7 +944,13 @@ trait EditsRecordFieldsInline
 
     protected function refreshInlineEditedRecord(): void
     {
-        $this->getRecord()->refresh();
+        $record = $this->getRecord();
+        $record->refresh();
+
+        foreach ($this->inlineEditEagerLoads() as $path) {
+            $record->unsetRelation(explode('.', $path)[0]);
+        }
+
         $this->eagerLoadInlineRecord();
         $this->forceInlineInfolistRender();
     }

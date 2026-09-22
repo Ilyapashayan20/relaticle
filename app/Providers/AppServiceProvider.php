@@ -10,6 +10,9 @@ use App\Enums\Plan;
 use App\Events\WorkspaceCreated;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
+use App\Filament\CustomFields\EmailFieldType;
+use App\Filament\CustomFields\LinkFieldType;
+use App\Filament\CustomFields\PhoneFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
 use App\Http\Responses\LoginResponse;
 use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
@@ -523,6 +526,9 @@ final class AppServiceProvider extends ServiceProvider
             'date-time' => DateTimeFieldType::class,
             'date' => DateFieldType::class,
             'rich-editor' => RichEditorFieldType::class,
+            'email' => EmailFieldType::class,
+            'phone' => PhoneFieldType::class,
+            'link' => LinkFieldType::class,
         ]);
 
         $this->configureCustomFieldSchemaInvalidation();

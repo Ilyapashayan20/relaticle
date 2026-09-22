@@ -17,6 +17,7 @@ final readonly class InlineField
         public bool $custom,
         public InlineCommit $commit,
         public string $label,
+        public ?CustomFieldType $type = null,
     ) {}
 
     /**
@@ -75,12 +76,23 @@ final readonly class InlineField
             true,
             $commit,
             filled($customField->name) ? (string) $customField->name : $customField->code,
+            $type,
         );
     }
 
     public function isCustom(): bool
     {
         return $this->custom;
+    }
+
+    public function isBoolean(): bool
+    {
+        return $this->type instanceof CustomFieldType && $this->type->isBoolean();
+    }
+
+    public function opensInModal(): bool
+    {
+        return $this->commit === InlineCommit::InModal;
     }
 
     /**

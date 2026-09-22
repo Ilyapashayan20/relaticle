@@ -89,19 +89,32 @@ enum CustomFieldType: string
         };
     }
 
+    public function isBoolean(): bool
+    {
+        return match ($this) {
+            self::CHECKBOX, self::TOGGLE => true,
+            default => false,
+        };
+    }
+
     public function isInlineEditable(): bool
     {
         return match ($this) {
-            self::FILE_UPLOAD, self::RICH_EDITOR => false,
+            self::FILE_UPLOAD => false,
             default => true,
         };
+    }
+
+    public function opensInModal(): bool
+    {
+        return $this === self::RICH_EDITOR;
     }
 
     public function savesOnChange(): bool
     {
         return match ($this) {
             self::CHECKBOX, self::TOGGLE, self::SELECT, self::RADIO, self::TOGGLE_BUTTONS,
-            self::DATE, self::DATE_TIME, self::COLOR_PICKER => true,
+            self::DATE, self::DATE_TIME => true,
             default => false,
         };
     }

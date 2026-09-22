@@ -11,11 +11,16 @@ enum InlineCommit
     case OnChange;
     case OnEnterOrBlur;
     case OnConfirm;
+    case InModal;
 
     public static function forType(CustomFieldType $type): ?self
     {
         if (! $type->isInlineEditable()) {
             return null;
+        }
+
+        if ($type->opensInModal()) {
+            return self::InModal;
         }
 
         if ($type->requiresExplicitConfirm()) {

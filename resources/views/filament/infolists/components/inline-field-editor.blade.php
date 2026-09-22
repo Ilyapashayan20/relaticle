@@ -1,6 +1,5 @@
 @php
     /** @var string $formHtml */
-    /** @var string|null $error */
     /** @var bool $saveOnEnterOrBlur */
     /** @var bool $saveOnChange */
     /** @var bool $saveOnConfirm */
@@ -14,7 +13,7 @@
         cancelled: false,
         selectWasOpen: false,
         selectInitialValue: '',
-        overlaySelector: '[role=listbox], [role=dialog], [role=option], [role=combobox], .fi-dropdown-panel, .fi-fo-date-time-picker-panel, [id*=country-listbox]',
+        overlaySelector: '[role=listbox], [role=dialog], [role=option], [role=combobox], .fi-dropdown-panel, .fi-fo-date-time-picker-panel, .fi-fo-color-picker-panel, hex-color-picker, [id*=country-listbox]',
         phoneRoot() {
             return $el.querySelector('.fi-fo-phone-input [x-data], .fi-fo-phone-input-wrp [x-data]');
         },
@@ -32,6 +31,34 @@
             const data = this.phoneData();
             return data?.activeCountryDropdown !== null && data?.activeCountryDropdown !== undefined;
         },
+        colorPickerRoot() {
+            return $el.querySelector('.fi-fo-color-picker [x-data]');
+        },
+        colorPickerData() {
+            const root = this.colorPickerRoot();
+            if (! root || ! window.Alpine) {
+                return null;
+            }
+            return Alpine.$data(root);
+        },
+        isColorPickerOpen() {
+            const panel = $el.querySelector('.fi-fo-color-picker-panel');
+            if (panel && (panel.style.display === 'block' || getComputedStyle(panel).display === 'block')) {
+                return true;
+            }
+            const data = this.colorPickerData();
+            return typeof data?.isOpen === 'function' && data.isOpen();
+        },
+        isColorPickerUi(node) {
+            if (! node || node.nodeType !== 1) {
+                return false;
+            }
+            return Boolean(node.closest?.('.fi-fo-color-picker, .fi-fo-color-picker-panel, hex-color-picker'));
+        },
+        isColorPickerEvent(event) {
+            const nodes = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
+            return nodes.some((node) => this.isColorPickerUi(node));
+        },
         countryPanel() {
             const listbox = document.querySelector('[id*=country-listbox]');
             return listbox?.parentElement ?? null;
@@ -40,21 +67,18 @@
             if (! node || node.nodeType !== 1) {
                 return false;
             }
-            if (node.closest?.('[id*=country-listbox], [id*=country-option], [role=option], [role=listbox], [role=searchbox]')) {
-                const panel = this.countryPanel();
-                if (panel?.contains(node)) {
-                    return true;
-                }
-                return Boolean(node.closest?.('[id*=country-listbox], [id*=country-option]'));
-            }
-            return Boolean(this.countryPanel()?.contains(node));
+
+            return Boolean(
+                node.closest?.('[id*=country-listbox], [id*=country-option], [id*=phone-input-]')
+                || this.countryPanel()?.contains(node)
+            );
         },
         isPhoneCountryEvent(event) {
             const nodes = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
             return nodes.some((node) => this.isPhoneCountryUi(node));
         },
         isOverlay(node) {
-            return Boolean(node?.closest?.(this.overlaySelector)) || this.isPhoneCountryUi(node);
+            return Boolean(node?.closest?.(this.overlaySelector)) || this.isPhoneCountryUi(node) || this.isColorPickerUi(node);
         },
         bindPhoneCountry() {
             const data = this.phoneData();
@@ -65,8 +89,12 @@
             const originalSelect = data.selectCountry;
             if (typeof originalSelect === 'function') {
                 data.selectCountry = (...args) => {
+                    $el.dataset.inlineOpening = 'true';
                     const result = originalSelect.apply(data, args);
-                    queueMicrotask(() => this.phoneTel()?.focus());
+                    queueMicrotask(() => {
+                        this.phoneTel()?.focus();
+                        setTimeout(() => { delete $el.dataset.inlineOpening }, 400);
+                    });
 
                     return result;
                 };
@@ -145,7 +173,8 @@
         shouldHold() {
             return this.committing
                 || $el.dataset.inlineOpening === 'true'
-                || this.isPhoneCountryOpen();
+                || this.isPhoneCountryOpen()
+                || this.isColorPickerOpen();
         },
         commitPhoneDraft() {
             const data = this.phoneData();
@@ -197,6 +226,11 @@
                 pickerData.togglePanelVisibility();
                 return;
             }
+            const color = colorPickerData();
+            if (color && typeof color.isOpen === 'function' && color.isOpen()) {
+                color.togglePanelVisibility();
+                return;
+            }
             const phone = phoneData();
             if (phone && phone.activeCountryDropdown !== null && phone.activeCountryDropdown !== undefined) {
                 phone.closeCountryDropdown();
@@ -219,7 +253,7 @@
                 save();
             "
             x-on:focusout="
-                if (shouldHold()) {
+                if (shouldHold() || isColorPickerOpen() || isColorPickerUi($event.relatedTarget)) {
                     return;
                 }
                 const next = $event.relatedTarget;
@@ -229,7 +263,7 @@
                 save();
             "
             x-on:click.outside="
-                if (shouldHold() || isOverlay($event.target) || isPhoneCountryEvent($event)) {
+                if (shouldHold() || isOverlay($event.target) || isPhoneCountryEvent($event) || isColorPickerEvent($event)) {
                     return;
                 }
                 save();
@@ -274,9 +308,28 @@
                     }
                 }
 
+                if ($el.querySelector('.fi-fo-color-picker')) {
+                    const colorRoot = $el.querySelector('.fi-fo-color-picker [x-data]');
+                    const colorData = colorRoot && window.Alpine ? Alpine.$data(colorRoot) : null;
+                    if (colorData && typeof colorData.togglePanelVisibility === 'function') {
+                        if (typeof colorData.isOpen !== 'function' || ! colorData.isOpen()) {
+                            colorData.togglePanelVisibility();
+                        }
+                        colorRoot.querySelector('input')?.focus();
+                        return;
+                    }
+                    if (tries < 20) {
+                        setTimeout(() => activate(tries + 1), 16);
+                        return;
+                    }
+                }
+
                 const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
                 if (multiValue && window.Alpine) {
                     const data = Alpine.$data(multiValue);
+                    if (data) {
+                        data.maxVisibleValues = 1;
+                    }
                     if (data && typeof data.openPanel === 'function') {
                         if (! data.$refs?.trigger || ! data.$refs?.panel) {
                             if (tries < 20) {
@@ -349,20 +402,7 @@
         <div class="fi-inline-field-editor-form">
             {!! $formHtml !!}
         </div>
-
-        <p
-            class="fi-inline-field-saving"
-            role="status"
-            wire:loading
-            wire:target="saveInlineField"
-        >
-            {{ __('filament/inline-edit.saving') }}
-        </p>
     </div>
-
-    @if (filled($error))
-        <p class="fi-fo-field-wrp-error-message fi-inline-field-error" role="alert">{{ $error }}</p>
-    @endif
 
     @if ($saveOnConfirm)
         <div class="fi-inline-field-actions">
