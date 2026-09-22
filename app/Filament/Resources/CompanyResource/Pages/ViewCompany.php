@@ -6,124 +6,73 @@ namespace App\Filament\Resources\CompanyResource\Pages;
 
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Filament\Concerns\EditsRecordFieldsInline;
+use App\Filament\Concerns\RendersRecordSplitView;
 use App\Filament\Resources\CompanyResource;
 use App\Filament\Resources\CompanyResource\RelationManagers\NotesRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManager;
 use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager;
-use App\Models\Company;
-use Filament\Actions\Action;
-use Filament\Actions\ActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\TextSize;
-use Illuminate\Support\Js;
 use Relaticle\ActivityLog\Filament\RelationManagers\ActivityLogRelationManager;
 use Relaticle\CustomFields\Facades\CustomFields;
 
 final class ViewCompany extends ViewRecord
 {
     use EditsRecordFieldsInline;
+    use RendersRecordSplitView;
 
     protected static string $resource = CompanyResource::class;
-
-    protected function getHeaderActions(): array
-    {
-        return [
-            EditAction::make()
-                ->icon('heroicon-o-pencil-square')
-                ->label(__('filament/resources/company.pages.view.actions.edit.label'))
-                ->after(function (): void {
-                    $this->refreshInlineEditedRecord();
-                }),
-            ActionGroup::make([
-                ActionGroup::make([
-                    Action::make('copyPageUrl')
-                        ->label(__('filament/resources/company.pages.view.actions.copy_page_url.label'))
-                        ->icon('heroicon-o-clipboard-document')
-                        ->action(function (Company $record): void {
-                            $jsUrl = Js::from(CompanyResource::getUrl('view', [$record]));
-                            $this->js("
-                            navigator.clipboard.writeText({$jsUrl}).then(() => {
-                                new FilamentNotification()
-                                    .title('URL copied to clipboard')
-                                    .success()
-                                    .send()
-                            })
-                        ");
-                        }),
-                    Action::make('copyRecordId')
-                        ->label(__('filament/resources/company.pages.view.actions.copy_record_id.label'))
-                        ->icon('heroicon-o-clipboard-document')
-                        ->action(function (Company $record): void {
-                            $jsId = Js::from((string) $record->getKey());
-                            $this->js("
-                            navigator.clipboard.writeText({$jsId}).then(() => {
-                                new FilamentNotification()
-                                    .title('Record ID copied to clipboard')
-                                    .success()
-                                    .send()
-                            })
-                        ");
-                        }),
-                ])->dropdown(false),
-                DeleteAction::make(),
-            ]),
-        ];
-    }
 
     public function infolist(Schema $schema): Schema
     {
         return $schema
+            ->inlineLabel()
+            ->columns($this->stackedInlineColumns())
             ->schema([
-                Flex::make([
-                    Section::make([
-                        Flex::make([
-                            $this->makeInlineEditable(
-                                RecordChipEntry::make('name')
-                                    ->chipSize('lg')
-                                    ->size(TextSize::Large)
-                                    ->grow()
-                                    ->label(__('filament/resources/company.pages.view.infolist.fields.name.label')),
-                                'name',
-                            ),
-                            Flex::make([
-                                RecordChipEntry::make('creator.name')
-                                    ->chipSize('sm')
-                                    ->grow(false)
-                                    ->label(__('filament/resources/company.pages.view.infolist.fields.creator.label')),
-                                $this->makeInlineEditable(
-                                    RecordChipEntry::make('accountOwner.name')
-                                        ->chipSize('sm')
-                                        ->grow(false)
-                                        ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label')),
-                                    'account_owner_id',
-                                ),
-                            ])
-                                ->grow(false)
-                                ->extraAttributes(['class' => 'fi-inline-header-end']),
-                        ])->extraAttributes(['class' => 'fi-inline-header']),
+                Section::make()
+                    ->key('companyDetails')
+                    ->inlineLabel()
+                    ->headerActions([
+                        $this->recordOverflowActions(),
+                    ])
+                    ->schema([
+                        $this->makeInlineEditable(
+                            RecordChipEntry::make('name')
+                                ->hiddenLabel()
+                                ->inlineLabel(false)
+                                ->chipSize('md'),
+                            'name',
+                        ),
+                        $this->makeInlineEditable(
+                            RecordChipEntry::make('accountOwner.name')
+                                ->chipSize('sm')
+                                ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label')),
+                            'account_owner_id',
+                        ),
                         ...$this->inlineEditableCustomFieldEntries(),
                         CustomFields::infolist()
                             ->forSchema($schema)
                             ->except($this->inlineCustomFieldCodes())
-                            ->build(),
-                    ]),
-                    Section::make([
+                            ->build()
+                            ->columns($this->stackedInlineColumns())
+                            ->columnSpan($this->stackedInlineColumnSpan()),
+                        TextEntry::make('created_by')
+                            ->label(__('filament/resources/company.pages.view.infolist.fields.creator.label'))
+                            ->columnSpan($this->stackedInlineColumnSpan()),
                         TextEntry::make('created_at')
                             ->label(__('filament/resources/company.pages.view.infolist.fields.created_at.label'))
-                            ->icon('heroicon-o-clock')
-                            ->dateTime(),
+                            ->dateTime()
+                            ->columnSpan($this->stackedInlineColumnSpan()),
                         TextEntry::make('updated_at')
                             ->label(__('filament/resources/company.pages.view.infolist.fields.updated_at.label'))
-                            ->icon('heroicon-o-clock')
-                            ->dateTime(),
-                    ])->grow(false),
-                ])->columnSpan('full'),
+                            ->dateTime()
+                            ->columnSpan($this->stackedInlineColumnSpan()),
+                    ])
+                    ->columns($this->stackedInlineColumns())
+                    ->columnSpan($this->stackedInlineColumnSpan())
+                    ->compact(),
             ]);
     }
 
@@ -142,6 +91,11 @@ final class ViewCompany extends ViewRecord
      */
     protected function inlineEditEagerLoads(): array
     {
-        return ['accountOwner', 'customFieldValues.customField.options'];
+        return ['accountOwner', 'creator', 'customFieldValues.customField.options'];
+    }
+
+    protected function recordOverflowTranslationPrefix(): string
+    {
+        return 'filament/resources/company';
     }
 }

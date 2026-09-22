@@ -6,101 +6,61 @@ namespace App\Filament\Resources\PeopleResource\Pages;
 
 use App\Filament\Components\Infolists\RecordChipEntry;
 use App\Filament\Concerns\EditsRecordFieldsInline;
+use App\Filament\Concerns\RendersRecordSplitView;
 use App\Filament\Resources\CompanyResource;
 use App\Filament\Resources\PeopleResource;
 use App\Models\People;
-use Filament\Actions\Action;
-use Filament\Actions\ActionGroup;
-use Filament\Actions\DeleteAction;
-use Filament\Actions\EditAction;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
-use Filament\Support\Enums\TextSize;
-use Illuminate\Support\Js;
 use Relaticle\CustomFields\Facades\CustomFields;
 
 final class ViewPeople extends ViewRecord
 {
     use EditsRecordFieldsInline;
+    use RendersRecordSplitView;
 
     protected static string $resource = PeopleResource::class;
 
-    protected function getHeaderActions(): array
-    {
-        return [
-            EditAction::make()
-                ->icon('heroicon-o-pencil-square')
-                ->label(__('filament/resources/person.pages.view.actions.edit.label'))
-                ->after(function (): void {
-                    $this->refreshInlineEditedRecord();
-                }),
-            ActionGroup::make([
-                ActionGroup::make([
-                    Action::make('copyPageUrl')
-                        ->label(__('filament/resources/person.pages.view.actions.copy_page_url.label'))
-                        ->icon('heroicon-o-clipboard-document')
-                        ->action(function (People $record): void {
-                            $jsUrl = Js::from(PeopleResource::getUrl('view', [$record]));
-                            $this->js("
-                            navigator.clipboard.writeText({$jsUrl}).then(() => {
-                                new FilamentNotification()
-                                    .title('URL copied to clipboard')
-                                    .success()
-                                    .send()
-                            })
-                        ");
-                        }),
-                    Action::make('copyRecordId')
-                        ->label(__('filament/resources/person.pages.view.actions.copy_record_id.label'))
-                        ->icon('heroicon-o-clipboard-document')
-                        ->action(function (People $record): void {
-                            $jsId = Js::from((string) $record->getKey());
-                            $this->js("
-                            navigator.clipboard.writeText({$jsId}).then(() => {
-                                new FilamentNotification()
-                                    .title('Record ID copied to clipboard')
-                                    .success()
-                                    .send()
-                            })
-                        ");
-                        }),
-                ])->dropdown(false),
-                DeleteAction::make(),
-            ]),
-        ];
-    }
-
     public function infolist(Schema $schema): Schema
     {
-        return $schema->schema([
-            Section::make()->schema([
-                Flex::make([
-                    $this->makeInlineEditable(
-                        RecordChipEntry::make('name')
-                            ->label(__('filament/resources/person.pages.view.infolist.fields.name.label'))
-                            ->size(TextSize::Large)
-                            ->grow(),
-                        'name',
-                    ),
-                    $this->makeInlineEditable(
-                        RecordChipEntry::make('company.name')
-                            ->label(__('filament/resources/person.pages.view.infolist.fields.company.label'))
-                            ->color('primary')
-                            ->grow(false)
-                            ->url(fn (People $record): ?string => $record->company ? CompanyResource::getUrl('view', [$record->company]) : null),
-                        'company_id',
-                    ),
-                ])->extraAttributes(['class' => 'fi-inline-header']),
-                ...$this->inlineEditableCustomFieldEntries(),
-                CustomFields::infolist()
-                    ->forSchema($schema)
-                    ->except($this->inlineCustomFieldCodes())
-                    ->build()
-                    ->columnSpanFull(),
-            ])->columnSpanFull(),
-        ]);
+        return $schema
+            ->inlineLabel()
+            ->columns($this->stackedInlineColumns())
+            ->schema([
+                Section::make()
+                    ->key('personDetails')
+                    ->inlineLabel()
+                    ->headerActions([
+                        $this->recordOverflowActions(),
+                    ])
+                    ->schema([
+                        $this->makeInlineEditable(
+                            RecordChipEntry::make('name')
+                                ->hiddenLabel()
+                                ->inlineLabel(false)
+                                ->chipSize('md'),
+                            'name',
+                        ),
+                        $this->makeInlineEditable(
+                            RecordChipEntry::make('company.name')
+                                ->label(__('filament/resources/person.pages.view.infolist.fields.company.label'))
+                                ->color('primary')
+                                ->url(fn (People $record): ?string => $record->company ? CompanyResource::getUrl('view', [$record->company]) : null),
+                            'company_id',
+                        ),
+                        ...$this->inlineEditableCustomFieldEntries(),
+                        CustomFields::infolist()
+                            ->forSchema($schema)
+                            ->except($this->inlineCustomFieldCodes())
+                            ->build()
+                            ->columns($this->stackedInlineColumns())
+                            ->columnSpan($this->stackedInlineColumnSpan()),
+                    ])
+                    ->columns($this->stackedInlineColumns())
+                    ->columnSpan($this->stackedInlineColumnSpan())
+                    ->compact(),
+            ]);
     }
 
     /**
@@ -109,5 +69,10 @@ final class ViewPeople extends ViewRecord
     protected function inlineEditEagerLoads(): array
     {
         return ['company', 'customFieldValues.customField.options'];
+    }
+
+    protected function recordOverflowTranslationPrefix(): string
+    {
+        return 'filament/resources/person';
     }
 }
