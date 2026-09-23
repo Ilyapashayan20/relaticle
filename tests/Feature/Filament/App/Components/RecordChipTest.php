@@ -128,6 +128,23 @@ it('renders an avatar for every related person in a multi-record column', functi
     foreach ($people as $person) {
         $rendered->assertSee($person->avatar, escape: false);
     }
+
+    $rendered->assertDontSee('fi-ta-record-chips-more', false);
+});
+
+it('shows two related people in a note column and a count for the rest', function (): void {
+    $note = Note::factory()->recycle([$this->user, $this->workspace])->create();
+    $people = People::factory(5)->recycle([$this->user, $this->workspace])->create();
+    $note->people()->attach($people);
+
+    $html = livewire(ManageNotes::class)->html();
+    $visibleAvatars = $people->filter(
+        fn (People $person): bool => str_contains($html, $person->avatar),
+    )->count();
+
+    expect($visibleAvatars)->toBe(2)
+        ->and($html)->toContain('fi-ta-record-chips-more')
+        ->and($html)->toContain('3+');
 });
 
 it('renders the person avatar on the view page', function (): void {

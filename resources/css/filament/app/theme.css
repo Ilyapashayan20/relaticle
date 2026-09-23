@@ -462,6 +462,14 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply px-3 py-2;
 }
 
+.fi-ta-record-chips .fi-record-chip {
+    max-width: 12rem;
+}
+
+.fi-ta-record-chips .fi-record-chip > span.truncate {
+    min-width: 0;
+}
+
 .fi-ta-cell:has(.fi-ta-actions) {
     @apply px-3 py-2;
 }
