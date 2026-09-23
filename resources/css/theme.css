@@ -707,14 +707,16 @@
     gap: var(--record-split-gap);
 }
 
-.fi-main:has(.fi-record-split-page) {
+.fi-main:has(.fi-record-split-page),
+.fi-main:has(.fi-record-index-page) {
     width: 100%;
     max-width: none;
     margin-inline: 0;
     padding-inline: 0.75rem;
 }
 
-.fi-record-split-page .fi-page-header-main-ctn {
+.fi-record-split-page .fi-page-header-main-ctn,
+.fi-record-index-page .fi-page-header-main-ctn {
     padding-block: 0.75rem;
     row-gap: 0.75rem;
 }
