@@ -925,8 +925,7 @@
 .fi-record-work-pane .fi-tabs:not(.fi-contained) {
     margin: 0 0 0.5rem;
     margin-inline: 0;
-    width: max-content;
-    max-width: 100%;
+    width: 100%;
 }
 
 .fi-record-work-pane .fi-sc-tabs .fi-sc-tabs-tab.fi-active {
