@@ -299,6 +299,23 @@
             }
             new FilamentNotification().title(message).danger().send();
         },
+        saveFromEnter() {
+            if (this.isPhoneCountryOpen()) {
+                return;
+            }
+            const active = document.activeElement;
+            if (active?.closest('[role=searchbox], [role=listbox], textarea')) {
+                return;
+            }
+            if (active?.closest('.fi-fo-multi-value-input')) {
+                const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
+                const data = multiValue && window.Alpine ? Alpine.$data(multiValue) : null;
+                if (data?.allowMultiple) {
+                    return;
+                }
+            }
+            this.save(true);
+        },
         save(dismiss = false) {
             if (this.shouldHold()) {
                 return;
@@ -374,10 +391,7 @@
             cancelEdit();
         "
         @if ($saveOnEnterOrBlur)
-            x-on:keydown.enter.capture.window="
-                if (! $el.contains($event.target)) {
-                    return;
-                }
+            x-on:keydown.enter.capture="
                 if (isPhoneCountryOpen() || $event.target.closest('[role=searchbox], [role=listbox], textarea')) {
                     return;
                 }
@@ -389,12 +403,7 @@
                     }
                 }
                 $event.preventDefault();
-                $event.stopImmediatePropagation();
-                if (commitDrafts() === false) {
-                    toastDraftInvalid();
-                    return;
-                }
-                save();
+                saveFromEnter();
             "
             x-on:focusout="
                 if (pendingSwitch || shouldHold() || isPhoneCountryOpen() || isColorPickerOpen() || isColorPickerUi($event.relatedTarget)) {
@@ -531,8 +540,12 @@
     @endif
 >
     <div class="fi-inline-field-editor-main">
-        <div class="fi-inline-field-editor-form">
+        <form
+            class="fi-inline-field-editor-form"
+            novalidate
+            x-on:submit.prevent="saveFromEnter()"
+        >
             {!! $formHtml !!}
-        </div>
+        </form>
     </div>
 </div>
