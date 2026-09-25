@@ -386,7 +386,8 @@ trait EditsRecordFieldsInline
     {
         if ($field->type === CustomFieldType::RADIO && $component instanceof Radio) {
             return Select::make($component->getName())
-                ->options($component->getOptions());
+                ->options($component->getOptions())
+                ->extraAttributes(['class' => 'fi-inline-radio-select']);
         }
 
         if ($field->type === CustomFieldType::CHECKBOX_LIST && $component instanceof CheckboxList) {

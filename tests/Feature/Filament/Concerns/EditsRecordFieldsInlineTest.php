@@ -787,7 +787,7 @@ it('renders selected option-list values as chips', function (CustomFieldType $ty
     'multi-select' => CustomFieldType::MULTI_SELECT,
 ]);
 
-it('opens a radio field as a select dropdown without done or cancel', function (): void {
+it('opens a radio field as a dropdown of radio options without done or cancel', function (): void {
     $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
     [$field, $options] = opportunityChoiceField($this->workspace->getKey(), CustomFieldType::RADIO, ['Enterprise', 'EU', 'SMB']);
     $record->saveCustomFieldValue($field, $options[0]->getKey());
@@ -798,6 +798,7 @@ it('opens a radio field as a select dropdown without done or cancel', function (
         ->assertDontSee('SMB')
         ->call('startInlineEdit', 'regions')
         ->assertSet('inlineEditingField', 'regions')
+        ->assertSeeHtml('fi-inline-radio-select')
         ->assertSeeHtml('fi-select-input')
         ->assertDontSeeHtml('fi-inline-choice-dropdown')
         ->assertDontSeeHtml('fi-fo-radio')
