@@ -2,20 +2,33 @@
     /** @var string $formHtml */
     /** @var bool $saveOnEnterOrBlur */
     /** @var bool $saveOnChange */
-    /** @var bool $saveOnConfirm */
+    /** @var bool $invalid */
     $saveOnChange ??= false;
+    $invalid ??= false;
 @endphp
 
 <div
-    class="fi-inline-field-editor"
+    class="fi-inline-field-editor{{ $invalid ? ' fi-inline-field-editor-invalid' : '' }}"
     x-data="{
         committing: false,
         cancelled: false,
+        pendingSwitch: null,
         selectWasOpen: false,
         selectInitialValue: '',
         overlaySelector: '[role=listbox], [role=dialog], [role=option], [role=combobox], .fi-dropdown-panel, .fi-fo-date-time-picker-panel, .fi-fo-color-picker-panel, hex-color-picker, [id*=country-listbox]',
         phoneRoot() {
-            return $el.querySelector('.fi-fo-phone-input [x-data], .fi-fo-phone-input-wrp [x-data]');
+            const nodes = $el.querySelectorAll('.fi-fo-phone-input [x-data], .fi-fo-phone-input-wrp [x-data]');
+            for (let i = 0; i < nodes.length; i++) {
+                if (! window.Alpine) {
+                    break;
+                }
+                const data = Alpine.$data(nodes[i]);
+                if (data && typeof data.selectCountry === 'function') {
+                    return nodes[i];
+                }
+            }
+
+            return nodes[0] ?? null;
         },
         phoneData() {
             const root = this.phoneRoot();
@@ -69,13 +82,18 @@
             }
 
             return Boolean(
-                node.closest?.('[id*=country-listbox], [id*=country-option], [id*=phone-input-]')
+                node.closest?.('[id*=country-listbox], [id*=country-option], [id*=phone-input-], [role=option], [role=listbox]')
                 || this.countryPanel()?.contains(node)
             );
         },
         isPhoneCountryEvent(event) {
             const nodes = typeof event.composedPath === 'function' ? event.composedPath() : [event.target];
             return nodes.some((node) => this.isPhoneCountryUi(node));
+        },
+        holdPhoneCountry() {
+            $el.dataset.inlineOpening = 'true';
+            clearTimeout(this._phoneHoldTimer);
+            this._phoneHoldTimer = setTimeout(() => { delete $el.dataset.inlineOpening }, 500);
         },
         isOverlay(node) {
             return Boolean(node?.closest?.(this.overlaySelector)) || this.isPhoneCountryUi(node) || this.isColorPickerUi(node);
@@ -86,14 +104,21 @@
                 return;
             }
             data._inlinePhoneBound = true;
+            const originalOpen = data.openCountryDropdown;
+            if (typeof originalOpen === 'function') {
+                data.openCountryDropdown = (...args) => {
+                    this.holdPhoneCountry();
+                    return originalOpen.apply(data, args);
+                };
+            }
             const originalSelect = data.selectCountry;
             if (typeof originalSelect === 'function') {
                 data.selectCountry = (...args) => {
-                    $el.dataset.inlineOpening = 'true';
+                    this.holdPhoneCountry();
                     const result = originalSelect.apply(data, args);
                     queueMicrotask(() => {
                         this.phoneTel()?.focus();
-                        setTimeout(() => { delete $el.dataset.inlineOpening }, 400);
+                        this.holdPhoneCountry();
                     });
 
                     return result;
@@ -176,6 +201,39 @@
                 || this.isPhoneCountryOpen()
                 || this.isColorPickerOpen();
         },
+        nextEditableCode(node) {
+            const next = node?.closest?.('[data-inline-field].fi-inline-editable');
+            const current = $el.closest('[data-inline-field]');
+            if (! next || ! current || next === current || next.getAttribute('data-inline-editing') === 'true') {
+                return null;
+            }
+
+            return next.getAttribute('data-inline-field');
+        },
+        closeFloatingPanels() {
+            const color = this.colorPickerData();
+            if (color && typeof color.isOpen === 'function' && color.isOpen() && typeof color.togglePanelVisibility === 'function') {
+                color.togglePanelVisibility();
+            }
+            const dateRoot = $el.querySelector('.fi-fo-date-time-picker [x-data]');
+            const dateData = dateRoot && window.Alpine ? Alpine.$data(dateRoot) : null;
+            if (dateData && typeof dateData.isOpen === 'function' && dateData.isOpen() && typeof dateData.togglePanelVisibility === 'function') {
+                dateData.togglePanelVisibility();
+            }
+            const select = this.selectAlpine();
+            if (select && typeof select.closeDropdown === 'function' && this.isSelectOpen()) {
+                select.closeDropdown();
+            }
+            const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
+            const multiData = multiValue && window.Alpine ? Alpine.$data(multiValue) : null;
+            if (multiData && typeof multiData.closePanel === 'function') {
+                multiData.closePanel();
+            }
+            const phone = this.phoneData();
+            if (phone && typeof phone.closeCountryDropdown === 'function' && this.isPhoneCountryOpen()) {
+                phone.closeCountryDropdown();
+            }
+        },
         commitPhoneDraft() {
             const data = this.phoneData();
             const tel = this.phoneTel();
@@ -184,18 +242,31 @@
             }
             data.updateEntry(0, 'number', tel.value);
         },
+        commitTagsDraft() {
+            const root = $el.querySelector('.fi-fo-tags-input');
+            if (! root || ! window.Alpine) {
+                return;
+            }
+            const data = Alpine.$data(root);
+            if (data && typeof data.createTag === 'function') {
+                data.createTag();
+            }
+        },
         commitDrafts() {
             this.commitPhoneDraft();
+            this.commitTagsDraft();
             const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
             if (! multiValue || ! window.Alpine) {
-                return;
+                return true;
             }
             const data = Alpine.$data(multiValue);
             if (! data) {
-                return;
+                return true;
             }
             if (typeof data.addValue === 'function' && data.newValue?.trim()) {
-                data.addValue();
+                if (data.addValue() === false) {
+                    return false;
+                }
             }
             if (! data.allowMultiple && typeof data.setSingleValue === 'function') {
                 const input = multiValue.querySelector('input:not([type=hidden])');
@@ -203,12 +274,16 @@
                     data.setSingleValue(input.value);
                 }
             }
+
+            return true;
         },
         save() {
             if (this.shouldHold()) {
                 return;
             }
-            this.commitDrafts();
+            if (this.commitDrafts() === false) {
+                return;
+            }
             this.committing = true;
             Promise.resolve($wire.saveInlineField())
                 .catch(() => {})
@@ -218,6 +293,20 @@
         },
     }"
     x-on:click.stop
+    x-on:mousedown.capture.window="
+        if (isPhoneCountryEvent($event)) {
+            holdPhoneCountry();
+            pendingSwitch = null;
+            return;
+        }
+        const next = nextEditableCode($event.target);
+        if (next) {
+            pendingSwitch = next;
+            closeFloatingPanels();
+            return;
+        }
+        pendingSwitch = null;
+    "
     @if (filled($formHtml))
         x-on:keydown.escape.window="
             const picker = $el.querySelector('.fi-fo-date-time-picker [x-data]');
@@ -240,7 +329,7 @@
         "
         @if ($saveOnEnterOrBlur)
             x-on:keydown.enter="
-                if (isPhoneCountryOpen() || $event.target.closest('[role=searchbox], [role=listbox]')) {
+                if (isPhoneCountryOpen() || $event.target.closest('[role=searchbox], [role=listbox], textarea')) {
                     return;
                 }
                 if ($event.target.closest('.fi-fo-multi-value-input')) {
@@ -253,24 +342,24 @@
                 save();
             "
             x-on:focusout="
-                if (shouldHold() || isColorPickerOpen() || isColorPickerUi($event.relatedTarget)) {
+                if (pendingSwitch || shouldHold() || isPhoneCountryOpen() || isColorPickerOpen() || isColorPickerUi($event.relatedTarget)) {
                     return;
                 }
                 const next = $event.relatedTarget;
-                if ($el.contains(next) || isOverlay(next) || isPhoneCountryUi(next)) {
+                if ($el.contains(next) || isOverlay(next) || isPhoneCountryUi(next) || nextEditableCode(next)) {
                     return;
                 }
                 save();
             "
             x-on:click.outside="
-                if (shouldHold() || isOverlay($event.target) || isPhoneCountryEvent($event) || isColorPickerEvent($event)) {
+                if (pendingSwitch || nextEditableCode($event.target) || shouldHold() || isOverlay($event.target) || isPhoneCountryEvent($event) || isColorPickerEvent($event)) {
                     return;
                 }
                 save();
             "
         @elseif ($saveOnChange)
             x-on:click.outside="
-                if (isOverlay($event.target) || isPhoneCountryEvent($event)) {
+                if (pendingSwitch || nextEditableCode($event.target) || isOverlay($event.target) || isPhoneCountryEvent($event)) {
                     return;
                 }
                 if ($event.target.closest('[data-inline-field]')) {
@@ -309,19 +398,7 @@
                 }
 
                 if ($el.querySelector('.fi-fo-color-picker')) {
-                    const colorRoot = $el.querySelector('.fi-fo-color-picker [x-data]');
-                    const colorData = colorRoot && window.Alpine ? Alpine.$data(colorRoot) : null;
-                    if (colorData && typeof colorData.togglePanelVisibility === 'function') {
-                        if (typeof colorData.isOpen !== 'function' || ! colorData.isOpen()) {
-                            colorData.togglePanelVisibility();
-                        }
-                        colorRoot.querySelector('input')?.focus();
-                        return;
-                    }
-                    if (tries < 20) {
-                        setTimeout(() => activate(tries + 1), 16);
-                        return;
-                    }
+                    return;
                 }
 
                 const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
@@ -403,23 +480,4 @@
             {!! $formHtml !!}
         </div>
     </div>
-
-    @if ($saveOnConfirm)
-        <div class="fi-inline-field-actions">
-            <button
-                type="button"
-                class="fi-inline-field-done"
-                wire:click.stop="saveInlineField"
-            >
-                {{ __('filament/inline-edit.done') }}
-            </button>
-            <button
-                type="button"
-                class="fi-inline-field-cancel"
-                wire:click.stop="cancelInlineEdit"
-            >
-                {{ __('filament/inline-edit.cancel') }}
-            </button>
-        </div>
-    @endif
 </div>

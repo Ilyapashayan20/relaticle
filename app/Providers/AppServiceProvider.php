@@ -8,11 +8,14 @@ use App\Console\Commands\MakeFilamentUserCommand;
 use App\Enums\CrmEntity;
 use App\Enums\Plan;
 use App\Events\WorkspaceCreated;
+use App\Filament\CustomFields\CheckboxListFieldType;
 use App\Filament\CustomFields\DateFieldType;
 use App\Filament\CustomFields\DateTimeFieldType;
 use App\Filament\CustomFields\EmailFieldType;
 use App\Filament\CustomFields\LinkFieldType;
+use App\Filament\CustomFields\MultiSelectFieldType;
 use App\Filament\CustomFields\PhoneFieldType;
+use App\Filament\CustomFields\RadioFieldType;
 use App\Filament\CustomFields\RichEditorFieldType;
 use App\Http\Responses\LoginResponse;
 use App\Listeners\Billing\SyncPlanOnStripeSubscriptionChange;
@@ -529,6 +532,9 @@ final class AppServiceProvider extends ServiceProvider
             'email' => EmailFieldType::class,
             'phone' => PhoneFieldType::class,
             'link' => LinkFieldType::class,
+            'checkbox-list' => CheckboxListFieldType::class,
+            'multi-select' => MultiSelectFieldType::class,
+            'radio' => RadioFieldType::class,
         ]);
 
         $this->configureCustomFieldSchemaInvalidation();

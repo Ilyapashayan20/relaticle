@@ -95,6 +95,11 @@ final readonly class InlineField
         return $this->commit === InlineCommit::InModal;
     }
 
+    public function keepsEditorOpen(): bool
+    {
+        return $this->type instanceof CustomFieldType && $this->type->keepsInlineEditorOpen();
+    }
+
     /**
      * @param  class-string  $modelClass
      * @return array<string, InlineCommit>

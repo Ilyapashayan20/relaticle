@@ -20,10 +20,13 @@ use App\Models\People;
 use App\Models\User;
 use Carbon\CarbonImmutable;
 use Filament\Actions\Action;
+use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\ColorPicker;
 use Filament\Forms\Components\DateTimePicker;
 use Filament\Forms\Components\Field;
+use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
 use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\Entry;
 use Filament\Infolists\Components\ViewEntry;
@@ -45,6 +48,7 @@ use Illuminate\Support\Js;
 use Illuminate\Validation\ValidationException;
 use Livewire\Attributes\Locked;
 use Relaticle\CustomFields\Facades\CustomFields;
+use Relaticle\CustomFields\Filament\Integration\Components\Forms\MultiValueInput\MultiValueInputComponent;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
 use Relaticle\CustomFields\Services\Phone\CountryPhoneService;
 
@@ -70,6 +74,14 @@ trait EditsRecordFieldsInline
         $field = $this->resolveInlineField($code);
 
         if (! $field instanceof InlineField || ! $this->canStartInlineEdit($code)) {
+            return;
+        }
+
+        if ($this->inlineEditingField === $code) {
+            return;
+        }
+
+        if (! $this->closeOpenInlineField()) {
             return;
         }
 
@@ -148,6 +160,14 @@ trait EditsRecordFieldsInline
         try {
             $payload = $this->inlinePayloadFromState($field, $schema->getState());
         } catch (ValidationException $exception) {
+            foreach ($exception->errors() as $key => $messages) {
+                foreach ($messages as $message) {
+                    if (is_string($key) && is_string($message)) {
+                        $this->addError($key, $message);
+                    }
+                }
+            }
+
             $this->notifyInlineFailure($this->firstValidationMessage($exception));
             $this->forceInlineInfolistRender();
 
@@ -155,6 +175,14 @@ trait EditsRecordFieldsInline
         }
 
         $this->persistInlinePayload($user, $record, $payload);
+
+        if ($field->keepsEditorOpen()) {
+            $this->getRecord()->refresh();
+            $this->eagerLoadInlineRecord();
+            $this->inlineEditVersion = $this->recordVersion();
+
+            return;
+        }
 
         $this->inlineEditingField = null;
         $this->inlineEditData = [];
@@ -196,6 +224,31 @@ trait EditsRecordFieldsInline
         $this->flushInlineEditForm();
         $this->resetErrorBag();
         $this->forceInlineInfolistRender();
+    }
+
+    private function closeOpenInlineField(): bool
+    {
+        $current = $this->inlineEditingField;
+
+        if ($current === null) {
+            return true;
+        }
+
+        $this->saveInlineField();
+
+        if ($this->inlineEditingField === null) {
+            return true;
+        }
+
+        $field = $this->resolveInlineField($current);
+
+        if ($field instanceof InlineField && $field->keepsEditorOpen()) {
+            $this->cancelInlineEdit();
+
+            return true;
+        }
+
+        return false;
     }
 
     public function isInlineEditing(string $code): bool
@@ -292,7 +345,7 @@ trait EditsRecordFieldsInline
         $components = $this->inlineFormFields($field);
 
         foreach ($components as $component) {
-            $this->applyInlineCommitBehavior($component, $field->commit);
+            $this->applyInlineCommitBehavior($component, $field);
         }
 
         return $components;
@@ -313,7 +366,7 @@ trait EditsRecordFieldsInline
             return [];
         }
 
-        return array_values(array_filter(
+        $components = array_values(array_filter(
             CustomFields::form()
                 ->forModel($record)
                 ->only([$field->code])
@@ -322,6 +375,27 @@ trait EditsRecordFieldsInline
                 ->all(),
             static fn (mixed $component): bool => $component instanceof Field,
         ));
+
+        return array_map(
+            fn (Field $component): Field => $this->inlineChoiceEditorField($field, $component),
+            $components,
+        );
+    }
+
+    private function inlineChoiceEditorField(InlineField $field, Field $component): Field
+    {
+        if ($field->type === CustomFieldType::RADIO && $component instanceof Radio) {
+            return Select::make($component->getName())
+                ->options($component->getOptions());
+        }
+
+        if ($field->type === CustomFieldType::CHECKBOX_LIST && $component instanceof CheckboxList) {
+            return Select::make($component->getName())
+                ->options($component->getOptions())
+                ->multiple();
+        }
+
+        return $component;
     }
 
     private function nativeFormField(string $code): Field
@@ -348,33 +422,44 @@ trait EditsRecordFieldsInline
         };
     }
 
-    private function applyInlineCommitBehavior(Field $field, InlineCommit $commit): void
+    private function applyInlineCommitBehavior(Field $component, InlineField $field): void
     {
-        $field->dehydrated(true)->hiddenLabel();
+        $component->dehydrated(true)->hiddenLabel();
 
-        if (! $field instanceof ColorPicker) {
-            $field->autofocus();
+        if (
+            ! $component instanceof ColorPicker
+            && ! $component instanceof CheckboxList
+            && ! $component instanceof Radio
+            && ! $component instanceof MultiValueInputComponent
+        ) {
+            $component->autofocus();
         }
 
-        if ($field instanceof DateTimePicker) {
-            $field->closeOnDateSelection();
+        if ($component instanceof Textarea) {
+            $component->rows(2)->autosize();
         }
 
-        if ($field instanceof Select) {
-            $field->native(false);
+        if ($component instanceof DateTimePicker) {
+            $component->closeOnDateSelection();
         }
 
-        if ($commit === InlineCommit::OnChange) {
-            $field
-                ->live()
-                ->afterStateUpdated(function (): void {
-                    if ($this->inlineEditHydrating) {
-                        return;
-                    }
-
-                    $this->saveInlineField();
-                });
+        if ($component instanceof Select) {
+            $component->native(false);
         }
+
+        if ($field->commit !== InlineCommit::OnChange) {
+            return;
+        }
+
+        $component
+            ->live()
+            ->afterStateUpdated(function (): void {
+                if ($this->inlineEditHydrating) {
+                    return;
+                }
+
+                $this->saveInlineField();
+            });
     }
 
     /**
@@ -563,8 +648,23 @@ trait EditsRecordFieldsInline
             'formHtml' => $this->getSchema('inlineEditForm')?->toHtml() ?? '',
             'saveOnEnterOrBlur' => $field?->commit === InlineCommit::OnEnterOrBlur,
             'saveOnChange' => $field?->commit === InlineCommit::OnChange,
-            'saveOnConfirm' => $field?->commit === InlineCommit::OnConfirm,
+            'invalid' => $this->inlineEditorHasError(),
         ])->render();
+    }
+
+    private function inlineEditorHasError(): bool
+    {
+        if ($this->getErrorBag()->has('inlineEditConflict')) {
+            return true;
+        }
+
+        foreach ($this->getErrorBag()->keys() as $key) {
+            if (str_starts_with((string) $key, 'inlineEditData')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function notifyInlineFailure(string $message): void

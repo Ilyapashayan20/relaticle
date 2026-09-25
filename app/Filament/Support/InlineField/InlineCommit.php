@@ -10,7 +10,6 @@ enum InlineCommit
 {
     case OnChange;
     case OnEnterOrBlur;
-    case OnConfirm;
     case InModal;
 
     public static function forType(CustomFieldType $type): ?self
@@ -21,10 +20,6 @@ enum InlineCommit
 
         if ($type->opensInModal()) {
             return self::InModal;
-        }
-
-        if ($type->requiresExplicitConfirm()) {
-            return self::OnConfirm;
         }
 
         if ($type->savesOnChange()) {

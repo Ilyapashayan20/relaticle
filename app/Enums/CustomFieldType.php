@@ -114,15 +114,15 @@ enum CustomFieldType: string
     {
         return match ($this) {
             self::CHECKBOX, self::TOGGLE, self::SELECT, self::RADIO, self::TOGGLE_BUTTONS,
-            self::DATE, self::DATE_TIME => true,
+            self::MULTI_SELECT, self::CHECKBOX_LIST, self::DATE, self::DATE_TIME => true,
             default => false,
         };
     }
 
-    public function requiresExplicitConfirm(): bool
+    public function keepsInlineEditorOpen(): bool
     {
         return match ($this) {
-            self::TEXTAREA, self::TAGS_INPUT, self::MULTI_SELECT, self::CHECKBOX_LIST, self::RECORD => true,
+            self::CHECKBOX_LIST, self::MULTI_SELECT => true,
             default => false,
         };
     }
