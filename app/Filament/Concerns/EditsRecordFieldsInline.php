@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace App\Filament\Concerns;
 
 use App\Enums\CustomFieldType;
+use App\Enums\InlineCommit;
 use App\Filament\CustomFields\RichEditorComponent;
 use App\Filament\Support\InlineField\FieldState;
-use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
 use App\Filament\Support\InlineField\NativeFormField;
 use App\Filament\Support\InlineField\RecordWriter;

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Filament\Support\InlineField;
 
 use App\Enums\CustomFieldType;
+use App\Enums\InlineCommit;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\Opportunity;

@@ -17,7 +17,6 @@
 <button
     x-data="{ state: {{ $on ? 'true' : 'false' }} }"
     x-bind:aria-checked="state ? 'true' : 'false'"
-    x-on:click="if ($el.disabled) return; state = ! state"
     x-bind:class="state ? @js($onClasses) : @js($offClasses)"
     @if ($on)
         x-cloak
@@ -30,7 +29,7 @@
     aria-label="{{ $label }}"
     @disabled($disabled)
     @unless ($disabled)
-        wire:click.stop="toggleInlineBoolean({{ \Illuminate\Support\Js::from($code) }})"
+        x-on:click="state = ! state; $wire.toggleInlineBoolean({{ \Illuminate\Support\Js::from($code) }})"
     @endunless
 >
     <div>

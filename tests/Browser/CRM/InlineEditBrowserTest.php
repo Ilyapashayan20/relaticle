@@ -36,6 +36,7 @@ it('toggles company icp from the record view', function (): void {
         ->assertVisible('[data-inline-field="icp"] [role="switch"]')
         ->assertAttribute('[data-inline-field="icp"] [role="switch"]', 'aria-checked', 'false')
         ->click('[data-inline-field="icp"] [role="switch"]')
+        ->wait(1)
         ->assertAttribute('[data-inline-field="icp"] [role="switch"]', 'aria-checked', 'true')
         ->assertNoJavaScriptErrors();
 
@@ -66,6 +67,7 @@ it('keeps the domain extra count after toggling another field', function (): voi
         ->assertSee('www.list.ru')
         ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 1]))
         ->click('[data-inline-field="icp"] [role="switch"]')
+        ->wait(1)
         ->assertAttribute('[data-inline-field="icp"] [role="switch"]', 'aria-checked', 'true')
         ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 1]))
         ->assertNoJavaScriptErrors();

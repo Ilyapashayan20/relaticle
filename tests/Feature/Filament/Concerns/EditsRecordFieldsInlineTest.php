@@ -6,6 +6,7 @@ use App\Enums\CustomFields\CompanyField;
 use App\Enums\CustomFields\OpportunityField;
 use App\Enums\CustomFields\PeopleField;
 use App\Enums\CustomFieldType;
+use App\Enums\InlineCommit;
 use App\Enums\WorkspaceRole;
 use App\Filament\Concerns\EditsRecordFieldsInline;
 use App\Filament\Concerns\RendersRecordSplitView;
@@ -20,7 +21,6 @@ use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
 use App\Filament\Support\InlineField\FieldState;
-use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
 use App\Filament\Support\InlineField\NativeFormField;
 use App\Filament\Support\InlineField\RecordWriter;
@@ -330,7 +330,7 @@ it('does not let a viewer start or save an inline opportunity edit', function ()
 
 it('saves a company account owner through the update action', function (): void {
     $owner = User::factory()->create();
-    $this->workspace->users()->attach($owner, ['role' => WorkspaceRole::Editor->value]);
+    $this->workspace->users()->attach($owner, ['role' => WorkspaceRole::from('editor')->value]);
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
         'account_owner_id' => $this->user->id,
     ]);

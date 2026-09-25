@@ -2,9 +2,7 @@
 
 declare(strict_types=1);
 
-namespace App\Filament\Support\InlineField;
-
-use App\Enums\CustomFieldType;
+namespace App\Enums;
 
 enum InlineCommit
 {
