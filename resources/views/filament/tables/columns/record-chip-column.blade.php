@@ -9,19 +9,13 @@
     $url = $getUrl();
 @endphp
 
-<div class="fi-ta-record-chips flex min-w-0 flex-nowrap items-center gap-x-2 overflow-hidden px-3 py-2 text-sm text-gray-950 dark:text-white">
+<div @class([
+    'fi-ta-record-chips flex min-w-0 flex-nowrap items-center gap-x-2 overflow-hidden px-3 py-2 text-sm',
+    'text-primary-600 dark:text-primary-400' => filled($url),
+    'text-gray-950 dark:text-white' => blank($url),
+])>
     @forelse ($visibleChips as $chip)
-        @if (filled($url))
-            <a
-                href="{{ $url }}"
-                @if ($shouldOpenUrlInNewTab()) target="_blank" @endif
-                class="min-w-0 text-primary-600 hover:underline dark:text-primary-400"
-            >
-                {{ $chip }}
-            </a>
-        @else
-            {{ $chip }}
-        @endif
+        {{ $chip }}
     @empty
         <span class="text-gray-400 dark:text-gray-500">{{ $getPlaceholder() }}</span>
     @endforelse

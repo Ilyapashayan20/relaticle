@@ -57,6 +57,7 @@ final class ViewPeople extends ViewRecord
                             ->columns($this->stackedInlineColumns())
                             ->columnSpan($this->stackedInlineColumnSpan()),
                     ])
+                    ->footer($this->recordDetailsOverflowToggle())
                     ->columns($this->stackedInlineColumns())
                     ->columnSpan($this->stackedInlineColumnSpan())
                     ->compact(),

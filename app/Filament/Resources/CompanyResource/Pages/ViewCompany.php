@@ -70,6 +70,7 @@ final class ViewCompany extends ViewRecord
                             ->dateTime()
                             ->columnSpan($this->stackedInlineColumnSpan()),
                     ])
+                    ->footer($this->recordDetailsOverflowToggle())
                     ->columns($this->stackedInlineColumns())
                     ->columnSpan($this->stackedInlineColumnSpan())
                     ->compact(),

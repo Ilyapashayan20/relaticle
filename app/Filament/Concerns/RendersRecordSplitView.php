@@ -10,10 +10,12 @@ use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Flex;
 use Filament\Schemas\Components\Group;
+use Filament\Schemas\Components\Html;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\Size;
 use Filament\Support\Enums\Width;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
 use Override;
 
@@ -22,6 +24,10 @@ use Override;
  */
 trait RendersRecordSplitView
 {
+    public const DETAILS_VISIBLE_FIELD_LIMIT = 8;
+
+    public bool $recordDetailsExpanded = false;
+
     public function content(Schema $schema): Schema
     {
         return $schema
@@ -30,9 +36,11 @@ trait RendersRecordSplitView
                     Group::make([
                         $this->getInfolistContentComponent(),
                     ])
-                        ->extraAttributes([
+                        ->extraAttributes(fn (): array => [
                             'class' => 'fi-record-details-rail',
-                            'x-init' => '$el.querySelectorAll(\'.fi-in-entry-label, .fi-in-entry-content\').forEach((node) => { if (node.closest(\'[data-inline-field="name"]\') || node.title || node.scrollWidth <= node.clientWidth + 1) { return } node.title = node.textContent.trim() })',
+                            'x-data' => 'recordRailOverflowTooltips',
+                            'data-details-expanded' => $this->recordDetailsExpanded ? 'true' : 'false',
+                            'data-details-visible-limit' => (string) self::DETAILS_VISIBLE_FIELD_LIMIT,
                         ])
                         ->grow(false),
                     Group::make([
@@ -103,6 +111,20 @@ trait RendersRecordSplitView
             ->size(Size::ExtraSmall)
             ->dropdownPlacement('bottom-end')
             ->extraAttributes(['class' => 'fi-record-details-more']);
+    }
+
+    public function toggleRecordDetails(): void
+    {
+        $this->recordDetailsExpanded = ! $this->recordDetailsExpanded;
+    }
+
+    protected function recordDetailsOverflowToggle(): Html
+    {
+        return Html::make(fn (): HtmlString => new HtmlString(
+            view('filament.app.record-details-overflow-toggle', [
+                'expanded' => $this->recordDetailsExpanded,
+            ])->render()
+        ));
     }
 
     abstract protected function recordOverflowTranslationPrefix(): string;

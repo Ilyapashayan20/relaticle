@@ -413,6 +413,10 @@ final class AppPanelProvider extends PanelProvider
                 PanelsRenderHook::HEAD_START,
                 fn (): View|Factory => view('filament.app.appearance-preference')
             )
+            ->renderHook(
+                PanelsRenderHook::SCRIPTS_BEFORE,
+                fn (): View|Factory => view('filament.app.record-rail-overflow-tooltips')
+            )
             /**
              * The activation checklist lives here rather than on the dashboard
              * so it follows the user into People or Opportunities instead of

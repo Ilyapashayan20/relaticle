@@ -462,8 +462,71 @@ body:has([data-sidebar-workspace-toggle]) .fi-topbar-collapse-sidebar-btn-ctn {
     @apply px-3 py-2;
 }
 
+.fi-ta-cell:has(.fi-ta-text .group\/value) {
+    width: 100%;
+    max-width: 0;
+    min-width: 16rem;
+    overflow: hidden;
+}
+
+.fi-ta-text:has(.group\/value) > .inline-flex {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.fi-ta-text .group\/value {
+    display: inline-flex;
+    flex: 0 1 auto;
+    align-items: center;
+    gap: 0.375rem;
+    max-width: 100%;
+    overflow: hidden;
+    background-color: transparent;
+}
+
+.fi-ta-text .group\/value:hover {
+    background-color: transparent;
+}
+
+.fi-ta-text .group\/value > a {
+    display: block;
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fi-ta-text .group\/value > button {
+    position: static;
+    inset: auto;
+    transform: none;
+    flex: 0 0 auto;
+    align-self: center;
+    margin: 0;
+    padding: 0;
+    opacity: 1;
+    background-color: transparent;
+    background-image: none;
+}
+
+.fi-ta-col .fi-ta-record-chips {
+    width: 100%;
+}
+
 .fi-ta-record-chips .fi-record-chip {
+    width: max-content;
+    max-width: 100%;
+}
+
+.fi-ta-record-chips:has(.fi-ta-record-chips-more) .fi-record-chip,
+.fi-ta-record-chips:has(.fi-record-chip ~ .fi-record-chip) .fi-record-chip {
     max-width: 12rem;
+}
+
+.fi-ta-col-has-column-url:hover .fi-record-chip > span.truncate {
+    text-decoration: underline;
 }
 
 .fi-ta-record-chips .fi-record-chip > span.truncate {
