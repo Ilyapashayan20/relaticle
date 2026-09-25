@@ -378,6 +378,8 @@
                         return;
                     }
                 }
+                $event.preventDefault();
+                $event.stopPropagation();
                 save();
             "
             x-on:focusout="

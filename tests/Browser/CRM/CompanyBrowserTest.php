@@ -107,7 +107,7 @@ it('keeps app page headings in the topbar across navigation and viewport sizes',
         'topbarHeight' => 64,
         'titleCentered' => true,
         'actionsTopGap' => 12,
-        'tableTopGap' => 32,
+        'tableTopGap' => 12,
         'hasHorizontalOverflow' => false,
     ]);
 

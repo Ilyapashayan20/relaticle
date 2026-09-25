@@ -330,7 +330,10 @@ it('does not let a viewer start or save an inline opportunity edit', function ()
 
 it('saves a company account owner through the update action', function (): void {
     $owner = User::factory()->create();
-    $this->workspace->users()->attach($owner, ['role' => WorkspaceRole::from('editor')->value]);
+    $role = WorkspaceRole::tryFrom('member')
+        ?? WorkspaceRole::tryFrom('editor')
+        ?? WorkspaceRole::Viewer;
+    $this->workspace->users()->attach($owner, ['role' => $role->value]);
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
         'account_owner_id' => $this->user->id,
     ]);
