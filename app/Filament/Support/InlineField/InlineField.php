@@ -85,6 +85,11 @@ final readonly class InlineField
         return $this->custom;
     }
 
+    public function valuePath(): string
+    {
+        return $this->custom ? 'custom_fields.'.$this->code : $this->code;
+    }
+
     public function isBoolean(): bool
     {
         return $this->type instanceof CustomFieldType && $this->type->isBoolean();

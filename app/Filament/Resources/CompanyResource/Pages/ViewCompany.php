@@ -13,10 +13,8 @@ use App\Filament\Resources\CompanyResource\RelationManagers\PeopleRelationManage
 use App\Filament\Resources\CompanyResource\RelationManagers\TasksRelationManager;
 use Filament\Infolists\Components\TextEntry;
 use Filament\Resources\Pages\ViewRecord;
-use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Relaticle\ActivityLog\Filament\RelationManagers\ActivityLogRelationManager;
-use Relaticle\CustomFields\Facades\CustomFields;
 
 final class ViewCompany extends ViewRecord
 {
@@ -27,54 +25,30 @@ final class ViewCompany extends ViewRecord
 
     public function infolist(Schema $schema): Schema
     {
-        return $schema
-            ->inlineLabel()
-            ->columns($this->stackedInlineColumns())
-            ->schema([
-                Section::make()
-                    ->key('companyDetails')
-                    ->inlineLabel()
-                    ->headerActions([
-                        $this->recordOverflowActions(),
-                    ])
-                    ->schema([
-                        $this->makeInlineEditable(
-                            RecordChipEntry::make('name')
-                                ->hiddenLabel()
-                                ->inlineLabel(false)
-                                ->chipSize('md'),
-                            'name',
-                        ),
-                        $this->makeInlineEditable(
-                            RecordChipEntry::make('accountOwner.name')
-                                ->chipSize('sm')
-                                ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label')),
-                            'account_owner_id',
-                        ),
-                        ...$this->inlineEditableCustomFieldEntries(),
-                        CustomFields::infolist()
-                            ->forSchema($schema)
-                            ->except($this->inlineCustomFieldCodes())
-                            ->build()
-                            ->columns($this->stackedInlineColumns())
-                            ->columnSpan($this->stackedInlineColumnSpan()),
-                        TextEntry::make('created_by')
-                            ->label(__('filament/resources/company.pages.view.infolist.fields.creator.label'))
-                            ->columnSpan($this->stackedInlineColumnSpan()),
-                        TextEntry::make('created_at')
-                            ->label(__('filament/resources/company.pages.view.infolist.fields.created_at.label'))
-                            ->dateTime()
-                            ->columnSpan($this->stackedInlineColumnSpan()),
-                        TextEntry::make('updated_at')
-                            ->label(__('filament/resources/company.pages.view.infolist.fields.updated_at.label'))
-                            ->dateTime()
-                            ->columnSpan($this->stackedInlineColumnSpan()),
-                    ])
-                    ->footer($this->recordDetailsOverflowToggle())
-                    ->columns($this->stackedInlineColumns())
-                    ->columnSpan($this->stackedInlineColumnSpan())
-                    ->compact(),
-            ]);
+        return $this->recordDetailsInfolist($schema, 'companyDetails', [
+            $this->makeInlineEditable(
+                RecordChipEntry::make('name')
+                    ->hiddenLabel()
+                    ->inlineLabel(false)
+                    ->chipSize('md'),
+                'name',
+            ),
+            $this->makeInlineEditable(
+                RecordChipEntry::make('accountOwner.name')
+                    ->chipSize('sm')
+                    ->label(__('filament/resources/company.pages.view.infolist.fields.account_owner.label')),
+                'account_owner_id',
+            ),
+        ], [
+            TextEntry::make('created_by')
+                ->label(__('filament/resources/company.pages.view.infolist.fields.creator.label')),
+            TextEntry::make('created_at')
+                ->label(__('filament/resources/company.pages.view.infolist.fields.created_at.label'))
+                ->dateTime(),
+            TextEntry::make('updated_at')
+                ->label(__('filament/resources/company.pages.view.infolist.fields.updated_at.label'))
+                ->dateTime(),
+        ]);
     }
 
     public function getRelationManagers(): array

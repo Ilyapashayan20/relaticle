@@ -4,21 +4,16 @@ declare(strict_types=1);
 
 namespace App\Filament\Concerns;
 
-use App\Actions\Company\UpdateCompany;
-use App\Actions\Opportunity\UpdateOpportunity;
-use App\Actions\People\UpdatePeople;
 use App\Enums\CustomFieldType;
-use App\Filament\Components\Forms\RecordSelect;
-use App\Filament\Components\Forms\WorkspaceMemberSelect;
 use App\Filament\CustomFields\RichEditorComponent;
+use App\Filament\Support\InlineField\FieldState;
 use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
-use App\Models\Company;
-use App\Models\CustomField;
-use App\Models\Opportunity;
-use App\Models\People;
+use App\Filament\Support\InlineField\NativeFormField;
+use App\Filament\Support\InlineField\RecordWriter;
 use App\Models\User;
 use Carbon\CarbonImmutable;
+use Closure;
 use Filament\Actions\Action;
 use Filament\Forms\Components\CheckboxList;
 use Filament\Forms\Components\ColorPicker;
@@ -27,13 +22,13 @@ use Filament\Forms\Components\Field;
 use Filament\Forms\Components\Radio;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
-use Filament\Forms\Components\TextInput;
 use Filament\Infolists\Components\Entry;
 use Filament\Infolists\Components\ViewEntry;
 use Filament\Notifications\Notification;
 use Filament\Resources\Pages\ViewRecord;
 use Filament\Schemas\Components\Html;
 use Filament\Schemas\Components\Icon;
+use Filament\Schemas\Components\Section;
 use Filament\Schemas\Schema;
 use Filament\Support\Enums\IconSize;
 use Filament\Support\Enums\Width;
@@ -42,7 +37,6 @@ use Filament\Support\Livewire\Partials\PartialsComponentHook;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Collection;
 use Illuminate\Support\HtmlString;
 use Illuminate\Support\Js;
 use Illuminate\Validation\ValidationException;
@@ -50,10 +44,12 @@ use Livewire\Attributes\Locked;
 use Relaticle\CustomFields\Facades\CustomFields;
 use Relaticle\CustomFields\Filament\Integration\Components\Forms\MultiValueInput\MultiValueInputComponent;
 use Relaticle\CustomFields\Models\Contracts\HasCustomFields;
-use Relaticle\CustomFields\Services\Phone\CountryPhoneService;
 
 /**
  * @mixin ViewRecord
+ *
+ * @method \Filament\Actions\ActionGroup recordOverflowActions()
+ * @method Html recordDetailsOverflowToggle()
  */
 trait EditsRecordFieldsInline
 {
@@ -158,7 +154,7 @@ trait EditsRecordFieldsInline
         $this->normalizeInlineEditData($field);
 
         try {
-            $payload = $this->inlinePayloadFromState($field, $schema->getState());
+            $payload = $this->inlineFieldState()->payloadFromState($field, $schema->getState());
         } catch (ValidationException $exception) {
             foreach ($exception->errors() as $key => $messages) {
                 foreach ($messages as $message) {
@@ -211,7 +207,7 @@ trait EditsRecordFieldsInline
         $this->inlineEditingField = null;
         $this->inlineEditData = [];
         $this->inlineEditVersion = null;
-        $this->persistInlinePayload($user, $record, $this->inlineBooleanPayload($field, $next));
+        $this->persistInlinePayload($user, $record, $this->inlineFieldState()->booleanPayload($field, $next));
         $this->refreshInlineEditedRecord();
     }
 
@@ -279,7 +275,11 @@ trait EditsRecordFieldsInline
             })
             ->slideOver()
             ->modalWidth(Width::FiveExtraLarge)
-            ->modalHeading(fn (array $arguments): string => $this->resolveModalRichField($arguments)?->label ?? '')
+            ->modalHeading(function (array $arguments): string {
+                $field = $this->resolveModalRichField($arguments);
+
+                return $field instanceof InlineField ? $field->label : '';
+            })
             ->fillForm(function (array $arguments): array {
                 $field = $this->resolveModalRichField($arguments);
 
@@ -316,7 +316,7 @@ trait EditsRecordFieldsInline
                     return;
                 }
 
-                $this->persistInlinePayload($user, $record, $this->inlinePayloadFromState($field, $data));
+                $this->persistInlinePayload($user, $record, $this->inlineFieldState()->payloadFromState($field, $data));
                 $this->inlineEditingField = null;
                 $this->inlineEditData = [];
                 $this->refreshInlineEditedRecord();
@@ -332,7 +332,48 @@ trait EditsRecordFieldsInline
     }
 
     /**
-     * @return list<mixed>
+     * @param  list<Entry>  $nativeEntries
+     * @param  list<Entry>  $readonlyEntries
+     */
+    protected function recordDetailsInfolist(Schema $schema, string $sectionKey, array $nativeEntries, array $readonlyEntries = []): Schema
+    {
+        $columns = $this->stackedInlineColumns();
+        $span = $this->stackedInlineColumnSpan();
+
+        foreach ($readonlyEntries as $entry) {
+            $entry->columnSpan($span);
+        }
+
+        return $schema
+            ->inlineLabel()
+            ->columns($columns)
+            ->schema([
+                Section::make()
+                    ->key($sectionKey)
+                    ->inlineLabel()
+                    ->headerActions([
+                        $this->recordOverflowActions(),
+                    ])
+                    ->schema([
+                        ...$nativeEntries,
+                        ...$this->inlineEditableCustomFieldEntries(),
+                        CustomFields::infolist()
+                            ->forSchema($schema)
+                            ->except($this->inlineCustomFieldCodes())
+                            ->build()
+                            ->columns($columns)
+                            ->columnSpan($span),
+                        ...$readonlyEntries,
+                    ])
+                    ->footer($this->recordDetailsOverflowToggle())
+                    ->columns($columns)
+                    ->columnSpan($span)
+                    ->compact(),
+            ]);
+    }
+
+    /**
+     * @return list<Field>
      */
     private function inlineEditFormComponents(): array
     {
@@ -359,7 +400,7 @@ trait EditsRecordFieldsInline
         $record = $this->getRecord();
 
         if (! $field->isCustom()) {
-            return [$this->nativeFormField($field->code)];
+            return [NativeFormField::make($field->code)];
         }
 
         if (! $record instanceof HasCustomFields) {
@@ -397,30 +438,6 @@ trait EditsRecordFieldsInline
         }
 
         return $component;
-    }
-
-    private function nativeFormField(string $code): Field
-    {
-        return match ($code) {
-            'name' => TextInput::make('name')
-                ->required()
-                ->maxLength(255),
-            'account_owner_id' => WorkspaceMemberSelect::make('account_owner_id')
-                ->relationship('accountOwner', 'name')
-                ->label(__('filament/resources/company.fields.account_owner_id.label'))
-                ->nullable(),
-            'company_id' => RecordSelect::make('company_id')
-                ->relationship('company', 'name')
-                ->searchable()
-                ->preload()
-                ->nullable(),
-            'contact_id' => RecordSelect::make('contact_id')
-                ->relationship('contact', 'name')
-                ->searchable()
-                ->preload()
-                ->nullable(),
-            default => abort(404),
-        };
     }
 
     private function applyInlineCommitBehavior(Field $component, InlineField $field): void
@@ -466,7 +483,7 @@ trait EditsRecordFieldsInline
     /**
      * @return array<string, int>
      */
-    protected function stackedInlineColumns(): array
+    private function stackedInlineColumns(): array
     {
         return [
             'default' => 1,
@@ -481,7 +498,7 @@ trait EditsRecordFieldsInline
     /**
      * @return array<string, string>
      */
-    protected function stackedInlineColumnSpan(): array
+    private function stackedInlineColumnSpan(): array
     {
         return [
             'default' => 'full',
@@ -529,10 +546,7 @@ trait EditsRecordFieldsInline
 
         if ($field->opensInModal()) {
             $entry->afterContent([
-                Icon::make(Heroicon::OutlinedPencilSquare)
-                    ->size(IconSize::Small)
-                    ->extraAttributes(['class' => 'fi-inline-edit-pencil'])
-                    ->visible(fn (): bool => $this->canStartInlineEdit($code)),
+                $this->inlineEditPencil(fn (): bool => $this->canStartInlineEdit($code)),
             ]);
 
             return $entry;
@@ -544,13 +558,18 @@ trait EditsRecordFieldsInline
         );
 
         $entry->afterContent([
-            Icon::make(Heroicon::OutlinedPencilSquare)
-                ->size(IconSize::Small)
-                ->extraAttributes(['class' => 'fi-inline-edit-pencil'])
-                ->visible(fn (): bool => $this->canStartInlineEdit($code) && ! $this->isInlineEditing($code)),
+            $this->inlineEditPencil(fn (): bool => $this->canStartInlineEdit($code) && ! $this->isInlineEditing($code)),
         ]);
 
         return $entry;
+    }
+
+    private function inlineEditPencil(Closure $visible): Icon
+    {
+        return Icon::make(Heroicon::OutlinedPencilSquare)
+            ->size(IconSize::Small)
+            ->extraAttributes(['class' => 'fi-inline-edit-pencil'])
+            ->visible($visible);
     }
 
     /**
@@ -596,7 +615,7 @@ trait EditsRecordFieldsInline
     /**
      * @return list<Entry>
      */
-    protected function inlineEditableCustomFieldEntries(): array
+    private function inlineEditableCustomFieldEntries(): array
     {
         $record = $this->getRecord();
         $entries = [];
@@ -626,7 +645,7 @@ trait EditsRecordFieldsInline
     /**
      * @return list<string>
      */
-    protected function inlineCustomFieldCodes(): array
+    private function inlineCustomFieldCodes(): array
     {
         return array_values(array_map(
             static fn (InlineField $field): string => $field->code,
@@ -708,24 +727,7 @@ trait EditsRecordFieldsInline
 
     private function currentInlineBoolean(InlineField $field): bool
     {
-        $state = $this->currentInlineFormState($field);
-        $value = $field->isCustom()
-            ? data_get($state, 'custom_fields.'.$field->code)
-            : data_get($state, $field->code);
-
-        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function inlineBooleanPayload(InlineField $field, bool $value): array
-    {
-        if ($field->isCustom()) {
-            return ['custom_fields' => [$field->code => $value]];
-        }
-
-        return [$field->code => $value];
+        return filter_var(data_get($this->currentInlineFormState($field), $field->valuePath()), FILTER_VALIDATE_BOOLEAN);
     }
 
     private function resolveInlineField(string $code): ?InlineField
@@ -742,138 +744,25 @@ trait EditsRecordFieldsInline
      */
     private function currentInlineFormState(InlineField $field): array
     {
-        $record = $this->getRecord();
-
-        if (! $field->isCustom()) {
-            return [$field->code => $record->getAttribute($field->code)];
+        if ($field->isCustom()) {
+            $this->eagerLoadInlineRecord();
         }
 
-        if (! $record instanceof HasCustomFields) {
-            return [];
-        }
-
-        $this->eagerLoadInlineRecord();
-
-        $customField = CustomField::query()
-            ->forEntity($record::class)
-            ->where('code', $field->code)
-            ->first();
-
-        if (! $customField instanceof CustomField) {
-            return ['custom_fields' => [$field->code => null]];
-        }
-
-        $value = $record->getCustomFieldValue($customField);
-
-        if ($value instanceof Collection) {
-            $value = $value->all();
-        }
-
-        return ['custom_fields' => [$field->code => $this->hydrateInlineCustomFieldValue($customField, $value)]];
+        return $this->inlineFieldState()->formState($field);
     }
 
     private function normalizeInlineEditData(InlineField $field): void
     {
-        if (! $field->isCustom()) {
+        $normalized = $this->inlineFieldState()->normalizedLinkOrEmailList(
+            $field,
+            data_get($this->inlineEditData, $field->valuePath()),
+        );
+
+        if ($normalized === null) {
             return;
         }
 
-        $path = 'custom_fields.'.$field->code;
-        $value = data_get($this->inlineEditData, $path);
-        $customField = CustomField::query()
-            ->forEntity($this->getRecord()::class)
-            ->where('code', $field->code)
-            ->first();
-
-        if (! $customField instanceof CustomField) {
-            return;
-        }
-
-        $type = CustomFieldType::tryFrom($customField->type);
-
-        if (! in_array($type, [CustomFieldType::LINK, CustomFieldType::EMAIL], true)) {
-            return;
-        }
-
-        data_set($this->inlineEditData, $path, $this->normalizeInlineStringList($value));
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function normalizeInlineStringList(mixed $value): array
-    {
-        if ($value instanceof Collection) {
-            $value = $value->all();
-        }
-
-        if (is_string($value)) {
-            $value = [$value];
-        }
-
-        if (! is_array($value)) {
-            return [];
-        }
-
-        $items = [];
-
-        foreach ($value as $item) {
-            if (! is_string($item)) {
-                continue;
-            }
-
-            $item = trim($item);
-
-            if ($item === '') {
-                continue;
-            }
-
-            $items[] = $item;
-        }
-
-        return $items;
-    }
-
-    private function hydrateInlineCustomFieldValue(CustomField $customField, mixed $value): mixed
-    {
-        $type = CustomFieldType::tryFrom($customField->type);
-
-        if (in_array($type, [CustomFieldType::LINK, CustomFieldType::EMAIL], true)) {
-            return $this->normalizeInlineStringList($value);
-        }
-
-        if ($customField->type !== CustomFieldType::PHONE->value) {
-            return $value;
-        }
-
-        $service = resolve(CountryPhoneService::class);
-        $defaultCountry = $service->detectCountryFromLocale();
-
-        if (! is_array($value) || $value === []) {
-            return [['country' => $defaultCountry, 'number' => '']];
-        }
-
-        return array_values(array_map(
-            fn (mixed $entry): array => is_string($entry)
-                ? $service->parseE164($entry, $defaultCountry)
-                : (is_array($entry) ? $entry : ['country' => $defaultCountry, 'number' => '']),
-            $value,
-        ));
-    }
-
-    /**
-     * @param  array<string, mixed>  $state
-     * @return array<string, mixed>
-     */
-    private function inlinePayloadFromState(InlineField $field, array $state): array
-    {
-        if (! $field->isCustom()) {
-            return Arr::only($state, [$field->code]);
-        }
-
-        $value = data_get($state, 'custom_fields.'.$field->code);
-
-        return ['custom_fields' => [$field->code => $value]];
+        data_set($this->inlineEditData, $field->valuePath(), $normalized);
     }
 
     private function inlineEmptyPlaceholder(InlineField $field): string
@@ -897,105 +786,11 @@ trait EditsRecordFieldsInline
 
     private function currentInlineDisplayValue(InlineField $field): string
     {
-        $empty = $this->inlineEmptyPlaceholder($field);
-        $record = $this->getRecord();
-
-        if (! $field->isCustom()) {
-            return $this->currentNativeDisplayValue($field, $record, $empty);
+        if ($field->isCustom()) {
+            $this->eagerLoadInlineRecord();
         }
 
-        if (! $record instanceof HasCustomFields) {
-            return $empty;
-        }
-
-        $this->eagerLoadInlineRecord();
-
-        $customField = CustomField::query()
-            ->forEntity($record::class)
-            ->where('code', $field->code)
-            ->with('options')
-            ->first();
-
-        if (! $customField instanceof CustomField) {
-            return $empty;
-        }
-
-        $value = $record->getCustomFieldValue($customField);
-
-        if ($value instanceof Collection) {
-            $value = $value->all();
-        }
-
-        if (blank($value)) {
-            return $empty;
-        }
-
-        if ($field->type === CustomFieldType::RICH_EDITOR && is_string($value)) {
-            $text = trim(html_entity_decode(strip_tags($value), ENT_QUOTES, 'UTF-8'));
-
-            return $text !== '' ? $text : $empty;
-        }
-
-        $option = $customField->options->firstWhere('id', $value)
-            ?? $customField->options->firstWhere('name', $value);
-
-        if (is_object($option) && filled($option->name ?? null)) {
-            return (string) $option->name;
-        }
-
-        if (is_array($value)) {
-            $labels = array_map(static function (mixed $item) use ($customField): string {
-                $option = $customField->options->firstWhere('id', $item)
-                    ?? $customField->options->firstWhere('name', $item);
-
-                if (is_object($option) && filled($option->name ?? null)) {
-                    return (string) $option->name;
-                }
-
-                return is_scalar($item) ? (string) $item : '';
-            }, $value);
-
-            $labels = array_values(array_filter($labels, static fn (string $label): bool => $label !== ''));
-
-            return $labels === [] ? $empty : implode(', ', $labels);
-        }
-
-        if (is_scalar($value)) {
-            return (string) $value;
-        }
-
-        return $empty;
-    }
-
-    private function currentNativeDisplayValue(InlineField $field, Model $record, string $empty): string
-    {
-        if ($field->code === 'account_owner_id' && $record instanceof Company) {
-            $record->loadMissing('accountOwner');
-
-            return filled($record->accountOwner?->name)
-                ? (string) $record->accountOwner->name
-                : $empty;
-        }
-
-        if ($field->code === 'company_id' && ($record instanceof People || $record instanceof Opportunity)) {
-            $record->loadMissing('company');
-
-            return filled($record->company?->name)
-                ? (string) $record->company->name
-                : $empty;
-        }
-
-        if ($field->code === 'contact_id' && $record instanceof Opportunity) {
-            $record->loadMissing('contact');
-
-            return filled($record->contact?->name)
-                ? (string) $record->contact->name
-                : $empty;
-        }
-
-        $value = $record->getAttribute($field->code);
-
-        return filled($value) && is_scalar($value) ? (string) $value : $empty;
+        return $this->inlineFieldState()->displayValue($field, $this->inlineEmptyPlaceholder($field));
     }
 
     /**
@@ -1003,12 +798,12 @@ trait EditsRecordFieldsInline
      */
     private function persistInlinePayload(User $user, Model $record, array $payload): void
     {
-        match (true) {
-            $record instanceof Opportunity => resolve(UpdateOpportunity::class)->execute($user, $record, $payload),
-            $record instanceof Company => resolve(UpdateCompany::class)->execute($user, $record, $payload),
-            $record instanceof People => resolve(UpdatePeople::class)->execute($user, $record, $payload),
-            default => abort(404),
-        };
+        resolve(RecordWriter::class)->execute($user, $record, $payload);
+    }
+
+    private function inlineFieldState(): FieldState
+    {
+        return new FieldState($this->getRecord());
     }
 
     private function recordVersion(): string

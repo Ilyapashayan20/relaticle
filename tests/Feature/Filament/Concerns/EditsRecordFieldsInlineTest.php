@@ -19,8 +19,11 @@ use App\Filament\CustomFields\RichEditorComponent;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
 use App\Filament\Resources\PeopleResource\Pages\ViewPeople;
+use App\Filament\Support\InlineField\FieldState;
 use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
+use App\Filament\Support\InlineField\NativeFormField;
+use App\Filament\Support\InlineField\RecordWriter;
 use App\Models\Company;
 use App\Models\CustomField;
 use App\Models\CustomFieldOption;
@@ -44,6 +47,9 @@ mutates(
     ViewPeople::class,
     InlineField::class,
     InlineCommit::class,
+    FieldState::class,
+    NativeFormField::class,
+    RecordWriter::class,
     CustomFieldType::class,
     EmailEntry::class,
     EmailFieldType::class,
