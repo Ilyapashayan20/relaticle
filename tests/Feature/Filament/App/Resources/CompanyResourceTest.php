@@ -56,12 +56,30 @@ it('places company details beside people tasks notes and activity', function ():
         ->assertSee(__('filament/resources/note.navigation_label'))
         ->assertDontSee(__('filament/resources/company.pages.view.actions.edit.label'))
         ->assertSee('fi-record-details-more', false)
+        ->assertSee('fi-record-details-overflow-toggle', false)
+        ->assertSee(__('filament/inline-edit.view_more'))
         ->assertDontSee('fi-record-work-more', false)
         ->assertSee('fi-in-entry-has-inline-label', false)
         ->assertActionExists(TestAction::make('copyPageUrl')->schemaComponent('companyDetails'))
         ->assertActionExists(TestAction::make('delete')->schemaComponent('companyDetails'));
 
     expect($page->instance()->getMaxContentWidth())->toBe(Width::Full);
+});
+
+it('reveals extra company details when view more is toggled', function (): void {
+    $record = Company::factory()->recycle([$this->user, $this->workspace])->create([
+        'name' => 'Northwind',
+    ]);
+
+    livewire(ViewCompany::class, ['record' => $record->getKey()])
+        ->assertSet('recordDetailsExpanded', false)
+        ->assertSee(__('filament/inline-edit.view_more'))
+        ->call('toggleRecordDetails')
+        ->assertSet('recordDetailsExpanded', true)
+        ->assertSee(__('filament/inline-edit.hide'))
+        ->call('toggleRecordDetails')
+        ->assertSet('recordDetailsExpanded', false)
+        ->assertSee(__('filament/inline-edit.view_more'));
 });
 
 // Column metadata is checked against a single mounted table rather than one

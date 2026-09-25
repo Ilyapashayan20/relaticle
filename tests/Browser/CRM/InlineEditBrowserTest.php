@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use App\Enums\CustomFields\CompanyField;
 use App\Enums\CustomFields\PeopleField;
+use App\Enums\CustomFieldType;
 use App\Filament\Concerns\EditsRecordFieldsInline;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
@@ -13,6 +14,7 @@ use App\Models\CustomField;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
+use Illuminate\Support\Collection;
 
 mutates(EditsRecordFieldsInline::class, ViewCompany::class, ViewOpportunity::class, ViewPeople::class);
 
@@ -40,6 +42,33 @@ it('toggles company icp from the record view', function (): void {
     expect($company->fresh()->customFieldValues()
         ->where('custom_field_id', $icp->getKey())
         ->value($icp->getValueColumn()))->toBeTrue();
+});
+
+it('keeps the domain extra count after toggling another field', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $company = Company::factory()->recycle([$user, $workspace])->create([
+        'name' => 'Northwind',
+    ]);
+    $domains = CustomField::query()
+        ->forEntity(Company::class)
+        ->where('code', CompanyField::DOMAINS)
+        ->firstOrFail();
+    $company->saveCustomFieldValue($domains, [
+        'www.list.ru',
+        'ilyapashayan.com',
+    ]);
+
+    loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/companies/{$company->getKey()}")
+        ->assertSee('www.list.ru')
+        ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 1]))
+        ->click('[data-inline-field="icp"] [role="switch"]')
+        ->assertAttribute('[data-inline-field="icp"] [role="switch"]', 'aria-checked', 'true')
+        ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 1]))
+        ->assertNoJavaScriptErrors();
 });
 
 it('opens company name click-to-edit and saves from the keyboard', function (): void {
@@ -150,7 +179,7 @@ it('stacks company fields in one column on the desktop record view', function ()
     ]);
 });
 
-it('opens the person email editor from the extra-count control', function (): void {
+it('opens the person email editor from the packed field', function (): void {
     $user = User::factory()->withWorkspace()->create();
     $workspace = $user->ownedWorkspaces()->first();
     $person = People::factory()->recycle([$user, $workspace])->create([
@@ -172,7 +201,7 @@ it('opens the person email editor from the extra-count control', function (): vo
         ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
         ->assertSee('first@example.test')
         ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 2]))
-        ->click('[data-inline-field="emails"] .fi-multi-value-more')
+        ->click('[data-inline-field="emails"] .fi-multi-value-entry')
         ->assertVisible('[data-inline-field="emails"] .fi-inline-field-editor')
         ->assertAttribute('[data-inline-field="emails"]', 'data-inline-editing', 'true')
         ->assertNoJavaScriptErrors();
@@ -206,4 +235,105 @@ it('opens the company from the chip and edits from the rest of the field', funct
         ->click('[data-inline-field="company_id"] a.fi-record-chip')
         ->assertPathIs($companyUrl)
         ->assertNoJavaScriptErrors();
+});
+
+it('does not save a person phone when only the country is chosen', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $person = People::factory()->recycle([$user, $workspace])->create([
+        'name' => 'Ada Lovelace',
+    ]);
+    $phone = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::PHONE_NUMBER)
+        ->firstOrFail();
+    $person->saveCustomFieldValue($phone, ['+14155550103']);
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->assertSee('Ada Lovelace')
+        ->click('[data-inline-field="phone_number"] .fi-in-entry-content')
+        ->assertVisible('[data-inline-field="phone_number"] .fi-inline-field-editor input[type=tel]')
+        ->click('[data-inline-field="phone_number"] [role=combobox]')
+        ->assertNoJavaScriptErrors();
+
+    $page->script(<<<'JS'
+        document.querySelector('[id*="country-option"][id$="-AM"]')?.click();
+    JS);
+
+    $page->assertVisible('[data-inline-field="phone_number"] .fi-inline-field-editor input[type=tel]')
+        ->assertNoJavaScriptErrors();
+
+    $stored = $person->fresh()->customFieldValues()
+        ->where('custom_field_id', $phone->getKey())
+        ->value($phone->getValueColumn());
+
+    expect($stored instanceof Collection ? $stored->all() : $stored)->toBe(['+14155550103']);
+});
+
+it('opens another person field on the first click after a color picker', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $person = People::factory()->recycle([$user, $workspace])->create([
+        'name' => 'Ada Lovelace',
+    ]);
+    $sectionId = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::JOB_TITLE)
+        ->value('custom_field_section_id');
+    CustomField::factory()->create([
+        'tenant_id' => $workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'people',
+        'code' => 'brand_color',
+        'name' => 'Brand color',
+        'type' => CustomFieldType::COLOR_PICKER->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->assertSee('Ada Lovelace')
+        ->click('[data-inline-field="brand_color"] .fi-in-entry-content')
+        ->assertVisible('[data-inline-field="brand_color"] .fi-inline-field-editor .fi-fo-color-picker')
+        ->click('[data-inline-field="job_title"] .fi-in-entry-content')
+        ->assertVisible('[data-inline-field="job_title"] .fi-inline-field-editor input.fi-input')
+        ->assertMissing('[data-inline-field="brand_color"] .fi-inline-field-editor')
+        ->assertNoJavaScriptErrors();
+});
+
+it('does not add an invalid email from the inline editor', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $person = People::factory()->recycle([$user, $workspace])->create([
+        'name' => 'Ada Lovelace',
+    ]);
+    $emails = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::EMAILS)
+        ->firstOrFail();
+    $person->saveCustomFieldValue($emails, ['ada@example.test']);
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->assertSee('Ada Lovelace')
+        ->click('[data-inline-field="emails"] .fi-in-entry-content')
+        ->assertVisible('[data-inline-field="emails"] .fi-inline-field-editor input[inputmode="email"]')
+        ->type('[data-inline-field="emails"] .fi-inline-field-editor input[inputmode="email"]', 'asas')
+        ->keys('[data-inline-field="emails"] .fi-inline-field-editor input[inputmode="email"]', 'Enter')
+        ->assertSee(__('filament/inline-edit.invalid_email'))
+        ->assertDontSee('Delete asas')
+        ->assertNoJavaScriptErrors();
+
+    $stored = $person->fresh()->customFieldValues()
+        ->where('custom_field_id', $emails->getKey())
+        ->value($emails->getValueColumn());
+
+    expect($stored instanceof Collection ? $stored->all() : $stored)->toBe(['ada@example.test']);
 });

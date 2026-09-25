@@ -9,8 +9,12 @@ use App\Enums\CustomFieldType;
 use App\Enums\WorkspaceRole;
 use App\Filament\Concerns\EditsRecordFieldsInline;
 use App\Filament\Concerns\RendersRecordSplitView;
+use App\Filament\CustomFields\CheckboxListFieldType;
 use App\Filament\CustomFields\EmailEntry;
 use App\Filament\CustomFields\EmailFieldType;
+use App\Filament\CustomFields\MultiSelectFieldType;
+use App\Filament\CustomFields\OptionChipEntry;
+use App\Filament\CustomFields\RadioFieldType;
 use App\Filament\CustomFields\RichEditorComponent;
 use App\Filament\Resources\CompanyResource\Pages\ViewCompany;
 use App\Filament\Resources\OpportunityResource\Pages\ViewOpportunity;
@@ -19,6 +23,7 @@ use App\Filament\Support\InlineField\InlineCommit;
 use App\Filament\Support\InlineField\InlineField;
 use App\Models\Company;
 use App\Models\CustomField;
+use App\Models\CustomFieldOption;
 use App\Models\Opportunity;
 use App\Models\People;
 use App\Models\User;
@@ -42,6 +47,10 @@ mutates(
     CustomFieldType::class,
     EmailEntry::class,
     EmailFieldType::class,
+    OptionChipEntry::class,
+    CheckboxListFieldType::class,
+    MultiSelectFieldType::class,
+    RadioFieldType::class,
     RichEditorComponent::class,
 );
 
@@ -93,6 +102,37 @@ function storedCustomFieldValue(Company|Opportunity|People $record, CustomField 
     return $value instanceof Collection ? $value->all() : $value;
 }
 
+/**
+ * @param  list<string>  $optionNames
+ * @return array{0: CustomField, 1: list<CustomFieldOption>}
+ */
+function opportunityChoiceField(string $workspaceId, CustomFieldType $type, array $optionNames): array
+{
+    $field = CustomField::factory()->create([
+        'tenant_id' => $workspaceId,
+        'custom_field_section_id' => opportunityStageField()->getAttribute('custom_field_section_id'),
+        'entity_type' => 'opportunity',
+        'code' => 'regions',
+        'name' => 'Regions',
+        'type' => $type->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    $options = [];
+
+    foreach ($optionNames as $index => $name) {
+        $options[] = CustomFieldOption::query()->create([
+            'tenant_id' => $workspaceId,
+            'custom_field_id' => $field->getKey(),
+            'name' => $name,
+            'sort_order' => $index + 1,
+        ]);
+    }
+
+    return [$field->load('options'), $options];
+}
+
 it('starts company name editing in the name field', function (): void {
     $company = Company::factory()->recycle([$this->user, $this->workspace])->create([
         'name' => 'Centera',
@@ -142,6 +182,7 @@ it('keeps the editor open and the typed amount when validation fails', function 
         ->call('saveInlineField')
         ->assertHasErrors()
         ->assertNotified()
+        ->assertSeeHtml('fi-inline-field-editor-invalid')
         ->assertSet('inlineEditingField', OpportunityField::AMOUNT->value)
         ->assertSet('inlineEditData.custom_fields.amount', 'not-a-number');
 
@@ -381,7 +422,57 @@ it('does not show a done button for a person email list', function (): void {
         ->assertDontSee('fi-inline-field-done', false);
 });
 
-it('shows the first person email and extra count then starts edit', function (): void {
+it('does not show done or cancel below a textarea custom field', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $sectionId = peopleJobTitleField()->getAttribute('custom_field_section_id');
+    CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'people',
+        'code' => 'bio',
+        'name' => 'Bio',
+        'type' => CustomFieldType::TEXTAREA->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', 'bio')
+        ->assertDontSeeHtml('fi-inline-field-editor-confirm')
+        ->assertDontSeeHtml('fi-inline-field-done')
+        ->assertDontSeeHtml('fi-inline-field-cancel')
+        ->assertSeeHtml('<textarea');
+});
+
+it('opens a tags field as a compact input without done or cancel', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $sectionId = peopleJobTitleField()->getAttribute('custom_field_section_id');
+    $field = CustomField::factory()->create([
+        'tenant_id' => $this->workspace->getKey(),
+        'custom_field_section_id' => $sectionId,
+        'entity_type' => 'people',
+        'code' => 'hobby',
+        'name' => 'Hobby',
+        'type' => CustomFieldType::TAGS_INPUT->value,
+        'active' => true,
+        'validation_rules' => [],
+    ]);
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', 'hobby')
+        ->assertSeeHtml('fi-fo-tags-input')
+        ->assertDontSeeHtml('fi-inline-field-editor-confirm')
+        ->assertDontSeeHtml('fi-inline-field-done')
+        ->assertDontSeeHtml('fi-inline-field-cancel')
+        ->set('inlineEditData.custom_fields.hobby', ['hiking'])
+        ->call('saveInlineField')
+        ->assertHasNoErrors()
+        ->assertSet('inlineEditingField', null);
+
+    expect(storedCustomFieldValue($person, $field))->toBe(['hiking']);
+});
+
+it('renders person emails as packed links then starts edit', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
     $emails = CustomField::query()
         ->forEntity(People::class)
@@ -395,15 +486,20 @@ it('shows the first person email and extra count then starts edit', function ():
 
     livewire(ViewPeople::class, ['record' => $person->fresh()->getKey()])
         ->assertSee('mailto:first@example.test', false)
-        ->assertDontSee('mailto:second@example.test', false)
-        ->assertSee(__('filament/inline-edit.show_n_more', ['count' => 2]))
+        ->assertSee('mailto:second@example.test', false)
+        ->assertSee('mailto:third@example.test', false)
+        ->assertSeeHtml('x-data="multiValueOverflow')
         ->assertDontSee(__('filament/inline-edit.show_less'))
-        ->assertSeeHtml('fi-multi-value-copy')
+        ->assertDontSeeHtml('fi-multi-value-copy')
         ->assertDontSeeHtml('fi-multi-value-toggle')
         ->assertDontSeeHtml('max-w-[250px]')
         ->call('startInlineEdit', PeopleField::EMAILS->value)
         ->assertSet('inlineEditingField', PeopleField::EMAILS->value)
-        ->assertSeeHtml('fi-inline-field-editor');
+        ->assertSeeHtml('fi-inline-field-editor')
+        ->assertSeeHtml('fi-fo-multi-value-input')
+        ->assertDontSeeHtml('fi-fo-multi-value-plain')
+        ->assertSeeHtml('+<span x-text="hiddenCount"></span>')
+        ->assertDontSeeHtml('+<span x-text="hiddenCount"></span> more');
 });
 
 it('renders a person email as a mailto link and still starts edit from the field', function (): void {
@@ -416,6 +512,7 @@ it('renders a person email as a mailto link and still starts edit from the field
 
     livewire(ViewPeople::class, ['record' => $person->fresh()->getKey()])
         ->assertSee('mailto:vp@example.com', false)
+        ->assertSeeHtml('fi-multi-value-copy')
         ->call('startInlineEdit', PeopleField::EMAILS->value)
         ->assertSet('inlineEditingField', PeopleField::EMAILS->value);
 });
@@ -435,6 +532,25 @@ it('saves a person email list through the update action', function (): void {
         ->assertSet('inlineEditingField', null);
 
     expect(storedCustomFieldValue($person, $emails))->toBe(['vp@example.com']);
+});
+
+it('rejects an invalid person email list and marks the editor', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $emails = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::EMAILS)
+        ->firstOrFail();
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', PeopleField::EMAILS->value)
+        ->set('inlineEditData.custom_fields.emails', ['asas'])
+        ->call('saveInlineField')
+        ->assertHasErrors()
+        ->assertNotified()
+        ->assertSeeHtml('fi-inline-field-editor-invalid')
+        ->assertSet('inlineEditingField', PeopleField::EMAILS->value);
+
+    expect(storedCustomFieldValue($person, $emails))->toBeEmpty();
 });
 
 it('saves a person linkedin url through the update action', function (): void {
@@ -626,6 +742,99 @@ it('saves a tenant-defined checkbox through the live switch', function (): void 
     expect(storedCustomFieldValue($company, $vip))->toBeTrue();
 });
 
+it('shows a set-field placeholder on an empty opportunity option list', function (CustomFieldType $type): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    opportunityChoiceField($this->workspace->getKey(), $type, ['Enterprise', 'EU']);
+
+    livewire(ViewOpportunity::class, ['record' => $record->getKey()])
+        ->assertSee('Set regions')
+        ->assertSeeHtml('data-inline-field="regions"')
+        ->assertSeeHtml('class="fi-in-placeholder"')
+        ->assertDontSeeHtml('fi-checkbox-input')
+        ->assertDontSeeHtml('fi-multi-value-chip')
+        ->assertDontSee('Enterprise');
+})->with([
+    'checkbox-list' => CustomFieldType::CHECKBOX_LIST,
+    'multi-select' => CustomFieldType::MULTI_SELECT,
+    'radio' => CustomFieldType::RADIO,
+]);
+
+it('renders selected option-list values as chips', function (CustomFieldType $type): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    [$field, $options] = opportunityChoiceField($this->workspace->getKey(), $type, ['Enterprise', 'EU', 'SMB']);
+    $record->saveCustomFieldValue($field, [$options[0]->getKey(), $options[1]->getKey()]);
+
+    livewire(ViewOpportunity::class, ['record' => $record->fresh()->getKey()])
+        ->assertSee('Enterprise')
+        ->assertSee('EU')
+        ->assertDontSee('SMB')
+        ->assertSeeHtml('fi-multi-value-chips')
+        ->assertSeeHtml('x-data="multiValueOverflow')
+        ->assertSeeHtml('fi-multi-value-chip')
+        ->assertDontSeeHtml('fi-checkbox-input')
+        ->assertDontSeeHtml('fi-multi-value-copy')
+        ->call('startInlineEdit', 'regions')
+        ->assertSet('inlineEditingField', 'regions')
+        ->assertSeeHtml('fi-inline-field-editor')
+        ->assertSeeHtml('fi-select-input')
+        ->assertDontSeeHtml('fi-inline-choice-dropdown')
+        ->assertDontSeeHtml('fi-fo-checkbox-list')
+        ->assertSee('SMB')
+        ->assertDontSeeHtml('fi-inline-field-done')
+        ->assertDontSeeHtml('fi-inline-field-cancel');
+})->with([
+    'checkbox-list' => CustomFieldType::CHECKBOX_LIST,
+    'multi-select' => CustomFieldType::MULTI_SELECT,
+]);
+
+it('opens a radio field as a select dropdown without done or cancel', function (): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    [$field, $options] = opportunityChoiceField($this->workspace->getKey(), CustomFieldType::RADIO, ['Enterprise', 'EU', 'SMB']);
+    $record->saveCustomFieldValue($field, $options[0]->getKey());
+
+    livewire(ViewOpportunity::class, ['record' => $record->fresh()->getKey()])
+        ->assertSee('Enterprise')
+        ->assertSeeHtml('fi-multi-value-chip')
+        ->assertDontSee('SMB')
+        ->call('startInlineEdit', 'regions')
+        ->assertSet('inlineEditingField', 'regions')
+        ->assertSeeHtml('fi-select-input')
+        ->assertDontSeeHtml('fi-inline-choice-dropdown')
+        ->assertDontSeeHtml('fi-fo-radio')
+        ->assertSee('SMB')
+        ->assertDontSeeHtml('fi-inline-field-done')
+        ->assertDontSeeHtml('fi-inline-field-cancel');
+});
+
+it('saves an opportunity checkbox list without closing the editor', function (): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    [$field, $options] = opportunityChoiceField($this->workspace->getKey(), CustomFieldType::CHECKBOX_LIST, ['Enterprise', 'EU']);
+
+    livewire(ViewOpportunity::class, ['record' => $record->getKey()])
+        ->call('startInlineEdit', 'regions')
+        ->set('inlineEditData.custom_fields.regions', [$options[1]->getKey()])
+        ->call('saveInlineField')
+        ->assertHasNoErrors()
+        ->assertSet('inlineEditingField', 'regions')
+        ->assertDontSeeHtml('fi-inline-field-done');
+
+    expect(storedCustomFieldValue($record, $field))->toBe([$options[1]->getKey()]);
+});
+
+it('saves an opportunity radio choice and closes the editor', function (): void {
+    $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
+    [$field, $options] = opportunityChoiceField($this->workspace->getKey(), CustomFieldType::RADIO, ['Enterprise', 'EU']);
+
+    livewire(ViewOpportunity::class, ['record' => $record->getKey()])
+        ->call('startInlineEdit', 'regions')
+        ->set('inlineEditData.custom_fields.regions', $options[1]->getKey())
+        ->call('saveInlineField')
+        ->assertHasNoErrors()
+        ->assertSet('inlineEditingField', null);
+
+    expect(storedCustomFieldValue($record, $field))->toBe($options[1]->getKey());
+});
+
 it('saves a tenant-defined custom text field through the update action', function (): void {
     $person = People::factory()->recycle([$this->user, $this->workspace])->create();
     $sectionId = peopleJobTitleField()->getAttribute('custom_field_section_id');
@@ -703,6 +912,38 @@ it('saves a tenant-defined color picker through the update action', function ():
     expect(storedCustomFieldValue($person, $color))->toBe('#d62828');
 });
 
+it('commits the open field when another inline field is opened', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $jobTitle = peopleJobTitleField();
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', PeopleField::JOB_TITLE->value)
+        ->set('inlineEditData.custom_fields.job_title', 'VP Sales')
+        ->call('startInlineEdit', PeopleField::PHONE_NUMBER->value)
+        ->assertHasNoErrors()
+        ->assertSet('inlineEditingField', PeopleField::PHONE_NUMBER->value);
+
+    expect(storedCustomFieldValue($person, $jobTitle))->toBe('VP Sales');
+});
+
+it('stays on the open field when switching fails validation', function (): void {
+    $person = People::factory()->recycle([$this->user, $this->workspace])->create();
+    $phone = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::PHONE_NUMBER)
+        ->firstOrFail();
+
+    livewire(ViewPeople::class, ['record' => $person->getKey()])
+        ->call('startInlineEdit', PeopleField::PHONE_NUMBER->value)
+        ->set('inlineEditData.custom_fields.phone_number', [['country' => 'US', 'number' => 'not-a-phone']])
+        ->call('startInlineEdit', PeopleField::JOB_TITLE->value)
+        ->assertHasErrors()
+        ->assertNotified()
+        ->assertSet('inlineEditingField', PeopleField::PHONE_NUMBER->value);
+
+    expect(storedCustomFieldValue($person, $phone))->toBeEmpty();
+});
+
 it('ignores a field code that is not editable on the record', function (): void {
     $record = Opportunity::factory()->recycle([$this->user, $this->workspace])->create();
 
@@ -749,6 +990,7 @@ it('keeps an invalid person phone in the editor', function (): void {
         ->call('saveInlineField')
         ->assertHasErrors()
         ->assertNotified()
+        ->assertSeeHtml('fi-inline-field-editor-invalid')
         ->assertSet('inlineEditingField', PeopleField::PHONE_NUMBER->value)
         ->assertSet('inlineEditData.custom_fields.phone_number.0.number', 'not-a-phone');
 

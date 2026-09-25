@@ -63,6 +63,8 @@ it('places opportunity details beside tasks notes and activity', function (): vo
         ->assertSee(__('filament/resources/note.navigation_label'))
         ->assertDontSee(__('filament/resources/opportunity.pages.view.actions.edit.label'))
         ->assertSee('fi-record-details-more', false)
+        ->assertSee('fi-record-details-overflow-toggle', false)
+        ->assertSee(__('filament/inline-edit.view_more'))
         ->assertDontSee('fi-record-work-more', false)
         ->assertSee('fi-in-entry-has-inline-label', false)
         ->assertActionExists(TestAction::make('copyPageUrl')->schemaComponent('opportunityDetails'))
