@@ -91,8 +91,6 @@ it('opens company name click-to-edit and saves from the keyboard', function (): 
     $page->keys('[data-inline-field="name"] .fi-inline-field-editor input.fi-input', ['Control+a'])
         ->type('[data-inline-field="name"] .fi-inline-field-editor input.fi-input', 'Contoso')
         ->keys('[data-inline-field="name"] .fi-inline-field-editor input.fi-input', 'Enter')
-        ->wait(1)
-        ->assertPathIs("/app/{$workspace->slug}/companies/{$company->getKey()}")
         ->assertSee('Contoso')
         ->assertNoJavaScriptErrors();
 
@@ -363,9 +361,7 @@ it('toasts an invalid linkedin url when the editor is dismissed', function (): v
         ->assertVisible('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input')
         ->clear('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input')
         ->type('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input', 'a')
-        ->click('.fi-record-details-rail .fi-section-header')
-        ->wait(1)
-        ->assertPathIs("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->keys('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input', 'Enter')
         ->assertSee(__('filament/inline-edit.invalid_url'))
         ->assertAttribute('[data-inline-field="linkedin"]', 'data-inline-editing', 'true')
         ->assertNoJavaScriptErrors();

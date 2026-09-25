@@ -272,21 +272,32 @@
 
             {{-- Single Value Mode: simple inline input --}}
             <template x-if="!allowMultiple && state.length <= 1">
-                <input
-                    type="text"
-                    inputmode="{{ $inputmode }}"
-                    spellcheck="false"
-                    autocomplete="off"
-                    autocorrect="off"
-                    autocapitalize="off"
-                    :value="singleValue"
-                    x-on:input="writeSingleValue($event.target.value)"
-                    :disabled="isDisabled"
-                    :aria-invalid="addInvalid"
-                    :class="{ 'fi-fo-multi-value-add-invalid': addInvalid }"
-                    class="fi-input block w-full border-none bg-transparent py-1.5 px-3 text-sm text-gray-950 outline-none transition duration-75 placeholder:text-gray-400 focus:ring-0 disabled:text-gray-500 dark:text-white dark:placeholder:text-gray-500 dark:disabled:text-gray-400"
-                    placeholder="{{ $placeholder }}"
-                />
+                <div class="w-full">
+                    <input
+                        type="text"
+                        inputmode="{{ $inputmode }}"
+                        spellcheck="false"
+                        autocomplete="off"
+                        autocorrect="off"
+                        autocapitalize="off"
+                        :value="singleValue"
+                        x-on:input="writeSingleValue($event.target.value)"
+                        x-on:keydown.enter.prevent="setSingleValue($event.target.value)"
+                        :disabled="isDisabled"
+                        :aria-invalid="addInvalid"
+                        :class="{ 'fi-fo-multi-value-add-invalid': addInvalid }"
+                        class="fi-input block w-full border-none bg-transparent py-1.5 px-3 text-sm text-gray-950 outline-none transition duration-75 placeholder:text-gray-400 focus:ring-0 disabled:text-gray-500 dark:text-white dark:placeholder:text-gray-500 dark:disabled:text-gray-400"
+                        placeholder="{{ $placeholder }}"
+                    />
+                    @if (filled($invalidValueMessage))
+                        <p
+                            x-show="addInvalid"
+                            class="fi-fo-multi-value-add-error px-3 pb-1 text-xs"
+                        >
+                            {{ $invalidValueMessage }}
+                        </p>
+                    @endif
+                </div>
             </template>
 
             {{-- Multiple Values Mode OR Single mode with legacy data: Values with popover --}}

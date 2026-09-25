@@ -318,7 +318,13 @@
         },
     }"
     x-on:click.stop
-    x-on:submit.capture.prevent
+    x-on:submit.capture.window="
+        if (! $el.contains(document.activeElement) && ! ($event.submitter && $el.contains($event.submitter))) {
+            return;
+        }
+        $event.preventDefault();
+        $event.stopImmediatePropagation();
+    "
     x-on:click.capture.window="
         if (! blockingSwitch) {
             return;
@@ -368,7 +374,10 @@
             cancelEdit();
         "
         @if ($saveOnEnterOrBlur)
-            x-on:keydown.enter="
+            x-on:keydown.enter.capture.window="
+                if (! $el.contains($event.target)) {
+                    return;
+                }
                 if (isPhoneCountryOpen() || $event.target.closest('[role=searchbox], [role=listbox], textarea')) {
                     return;
                 }
@@ -380,7 +389,11 @@
                     }
                 }
                 $event.preventDefault();
-                $event.stopPropagation();
+                $event.stopImmediatePropagation();
+                if (commitDrafts() === false) {
+                    toastDraftInvalid();
+                    return;
+                }
                 save();
             "
             x-on:focusout="
