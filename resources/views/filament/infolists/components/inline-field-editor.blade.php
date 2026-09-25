@@ -9,10 +9,14 @@
 
 <div
     class="fi-inline-field-editor{{ $invalid ? ' fi-inline-field-editor-invalid' : '' }}"
+    data-invalid-email="{{ __('filament/inline-edit.invalid_email') }}"
+    data-invalid-url="{{ __('filament/inline-edit.invalid_url') }}"
     x-data="{
         committing: false,
         cancelled: false,
         pendingSwitch: null,
+        blockingSwitch: false,
+        lastDraftToastAt: 0,
         selectWasOpen: false,
         selectInitialValue: '',
         overlaySelector: '[role=listbox], [role=dialog], [role=option], [role=combobox], .fi-dropdown-panel, .fi-fo-date-time-picker-panel, .fi-fo-color-picker-panel, hex-color-picker, [id*=country-listbox]',
@@ -270,18 +274,39 @@
             }
             if (! data.allowMultiple && typeof data.setSingleValue === 'function') {
                 const input = multiValue.querySelector('input:not([type=hidden])');
-                if (input) {
-                    data.setSingleValue(input.value);
+                if (input && data.setSingleValue(input.value) === false) {
+                    return false;
                 }
             }
 
             return true;
         },
-        save() {
+        toastDraftInvalid() {
+            const now = Date.now();
+            if (now - this.lastDraftToastAt < 400) {
+                return;
+            }
+            this.lastDraftToastAt = now;
+            const multiValue = $el.querySelector('.fi-fo-multi-value-input [x-data]');
+            const data = multiValue && window.Alpine ? Alpine.$data(multiValue) : null;
+            const message = data?.inputType === 'email'
+                ? $el.dataset.invalidEmail
+                : data?.inputType === 'url'
+                    ? $el.dataset.invalidUrl
+                    : '';
+            if (! message || typeof FilamentNotification !== 'function') {
+                return;
+            }
+            new FilamentNotification().title(message).danger().send();
+        },
+        save(dismiss = false) {
             if (this.shouldHold()) {
                 return;
             }
             if (this.commitDrafts() === false) {
+                if (dismiss) {
+                    this.toastDraftInvalid();
+                }
                 return;
             }
             this.committing = true;
@@ -293,6 +318,14 @@
         },
     }"
     x-on:click.stop
+    x-on:click.capture.window="
+        if (! blockingSwitch) {
+            return;
+        }
+        $event.preventDefault();
+        $event.stopImmediatePropagation();
+        blockingSwitch = false;
+    "
     x-on:mousedown.capture.window="
         if (isPhoneCountryEvent($event)) {
             holdPhoneCountry();
@@ -301,6 +334,12 @@
         }
         const next = nextEditableCode($event.target);
         if (next) {
+            if (commitDrafts() === false) {
+                pendingSwitch = null;
+                blockingSwitch = true;
+                toastDraftInvalid();
+                return;
+            }
             pendingSwitch = next;
             closeFloatingPanels();
             return;
@@ -349,13 +388,13 @@
                 if ($el.contains(next) || isOverlay(next) || isPhoneCountryUi(next) || nextEditableCode(next)) {
                     return;
                 }
-                save();
+                save(true);
             "
             x-on:click.outside="
                 if (pendingSwitch || nextEditableCode($event.target) || shouldHold() || isOverlay($event.target) || isPhoneCountryEvent($event) || isColorPickerEvent($event)) {
                     return;
                 }
-                save();
+                save(true);
             "
         @elseif ($saveOnChange)
             x-on:click.outside="

@@ -65,7 +65,7 @@
                     this.state = this.state.filter(v => v && v.trim() !== '');
 
                     this.documentClickListener = (event) => {
-                        if (!this.isOpen()) {
+                        if (!this.isOpen() || this.$el.closest('.fi-inline-field-editor')) {
                             return;
                         }
 
@@ -225,6 +225,12 @@
                     this.state = trimmed ? [trimmed] : [];
                 },
 
+                writeSingleValue(value) {
+                    this.addInvalid = false;
+                    const trimmed = value.trim();
+                    this.state = trimmed ? [trimmed] : [];
+                },
+
                 deleteValue(valueToDelete) {
                     this.state = this.state.filter((v) => v !== valueToDelete);
                     if (this.state.length === 0 && !this.allowMultiple) {
@@ -269,9 +275,15 @@
                 <input
                     type="text"
                     inputmode="{{ $inputmode }}"
+                    spellcheck="false"
+                    autocomplete="off"
+                    autocorrect="off"
+                    autocapitalize="off"
                     :value="singleValue"
-                    x-on:input="setSingleValue($event.target.value)"
+                    x-on:input="writeSingleValue($event.target.value)"
                     :disabled="isDisabled"
+                    :aria-invalid="addInvalid"
+                    :class="{ 'fi-fo-multi-value-add-invalid': addInvalid }"
                     class="fi-input block w-full border-none bg-transparent py-1.5 px-3 text-sm text-gray-950 outline-none transition duration-75 placeholder:text-gray-400 focus:ring-0 disabled:text-gray-500 dark:text-white dark:placeholder:text-gray-500 dark:disabled:text-gray-400"
                     placeholder="{{ $placeholder }}"
                 />
@@ -441,6 +453,10 @@
                                 <input
                                     type="text"
                                     inputmode="{{ $inputmode }}"
+                                    spellcheck="false"
+                                    autocomplete="off"
+                                    autocorrect="off"
+                                    autocapitalize="off"
                                     x-model="newValue"
                                     x-ref="newInput"
                                     x-on:input="addInvalid = false"

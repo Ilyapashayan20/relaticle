@@ -337,3 +337,36 @@ it('does not add an invalid email from the inline editor', function (): void {
 
     expect($stored instanceof Collection ? $stored->all() : $stored)->toBe(['ada@example.test']);
 });
+
+it('toasts an invalid linkedin url when the editor is dismissed', function (): void {
+    $user = User::factory()->withWorkspace()->create();
+    $workspace = $user->ownedWorkspaces()->first();
+    $person = People::factory()->recycle([$user, $workspace])->create([
+        'name' => 'Ada Lovelace',
+    ]);
+    $linkedin = CustomField::query()
+        ->forEntity(People::class)
+        ->where('code', PeopleField::LINKEDIN)
+        ->firstOrFail();
+    $person->saveCustomFieldValue($linkedin, ['www.linkedin.com/in/ada']);
+
+    $page = loginViaBrowser($user)
+        ->assertPathIs("/app/{$workspace->slug}")
+        ->resize(1440, 900)
+        ->navigate("/app/{$workspace->slug}/people/{$person->getKey()}")
+        ->assertSee('Ada Lovelace')
+        ->click('[data-inline-field="linkedin"] .fi-in-entry-content')
+        ->assertVisible('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input')
+        ->clear('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input')
+        ->type('[data-inline-field="linkedin"] .fi-inline-field-editor input.fi-input', 'a')
+        ->click('.fi-record-work-pane')
+        ->assertSee(__('filament/inline-edit.invalid_url'))
+        ->assertAttribute('[data-inline-field="linkedin"]', 'data-inline-editing', 'true')
+        ->assertNoJavaScriptErrors();
+
+    $stored = $person->fresh()->customFieldValues()
+        ->where('custom_field_id', $linkedin->getKey())
+        ->value($linkedin->getValueColumn());
+
+    expect($stored instanceof Collection ? $stored->all() : $stored)->toBe(['www.linkedin.com/in/ada']);
+});
