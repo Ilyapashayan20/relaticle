@@ -318,6 +318,7 @@
         },
     }"
     x-on:click.stop
+    x-on:submit.capture.prevent
     x-on:click.capture.window="
         if (! blockingSwitch) {
             return;
